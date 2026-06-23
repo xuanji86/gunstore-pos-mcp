@@ -26,6 +26,10 @@ class FakeClient:
 		self.calls.append(("run_report", name, filters))
 		return {"ok": True}
 
+	def update_document(self, doctype, name, values):
+		self.calls.append(("update_document", doctype, name, values))
+		return {"ok": True}
+
 
 class FakeMCP:
 	"""Captures @mcp.tool()-decorated functions by name."""
@@ -92,6 +96,14 @@ class CuratedTools(unittest.TestCase):
 			"call_method",
 			"ffl_integrations.fastbound.inventory_sync.sync_in_stock_from_boundbook",
 			{"dry_run": 0, "item_ids": None},
+		))
+
+	def test_set_serial_title(self):
+		"""Per-gun Woo title write goes to Serial No.item_name (no confirm gate)."""
+		self.tools["set_serial_title"]("SN1", "Colt King Cobra .357 Magnum")
+		self.assertEqual(self._last(), (
+			"update_document", "Serial No", "SN1",
+			{"item_name": "Colt King Cobra .357 Magnum"},
 		))
 
 	# ------------------------------------------------- B: writes (confirm)
@@ -191,7 +203,7 @@ class CuratedTools(unittest.TestCase):
 			"item_stock", "available_serials", "rsr_catalog_search", "boundbook_reconcile",
 			"receive_goods", "add_stock", "set_stock", "toggle_service_need",
 			"push_serial_to_fastbound", "verify_supplier_ffl", "reverify_all_ffls",
-			"promote_to_item", "backfill_from_rsr",
+			"promote_to_item", "backfill_from_rsr", "set_serial_title",
 		):
 			self.assertIn(name, self.tools)
 

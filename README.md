@@ -96,6 +96,9 @@ Secrets stay in `.env` (loaded by the server), not in the agent config.
 | `atf_verify_ffl` | EZ Check verify + upsert record (needs `confirm=true`) |
 | `firearms_in_stock` | the Firearms In Stock report |
 | `find_item` | typeahead item search |
+| `woo_test_connection` | WooCommerce API probe |
+| `woo_push_item` / `woo_delist_item` / `woo_reconcile` | list / delist / reconcile an Item on Woo (need `confirm=true`) |
+| `set_serial_title` | set a per-gun Woo listing title (writes `Serial No.item_name`; takes effect on next push) |
 
 ## Security notes
 

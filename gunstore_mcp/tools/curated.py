@@ -95,6 +95,16 @@ def register(mcp: Any) -> None:
         )
 
     @mcp.tool()
+    def set_serial_title(serial_no: str, title: str) -> Any:
+        """Set the per-gun WooCommerce listing title for one firearm (writes
+        Serial No.item_name). A per-serial firearm's Woo product name is taken from
+        Serial No.item_name, falling back to the shared Item name — so this gives one
+        physical gun its own title instead of the model name shared by every serial.
+        Not yet live: it takes effect on the next push (push_serial_now / woo_push_item).
+        The field is fetch_if_empty so the value persists once set."""
+        return get_client().update_document("Serial No", serial_no, {"item_name": title})
+
+    @mcp.tool()
     def atf_verify_ffl(ffl_number: str, confirm: bool = False) -> Any:
         """Live-verify an FFL number via ATF EZ Check and upsert an ATF FFL Record.
         Creates/updates a record, so requires confirm=true."""
