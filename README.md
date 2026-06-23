@@ -2,8 +2,12 @@
 
 A local [MCP](https://modelcontextprotocol.io) server that wraps the GunStore-POS
 Frappe REST API, so you can read and change **production** settings/content from
-Claude — toggle integration config, edit item pricing/listing, fix records,
-trigger RSR/FastBound/ATF operations, run the Firearms-In-Stock report.
+Claude or Codex — toggle integration config, edit item pricing/listing, fix
+records, trigger RSR/FastBound/ATF operations, run the Firearms-In-Stock report.
+
+> **Companion repo:** [`firearm-listing-import`](https://github.com/xuanji86/firearm-listing-import) —
+> a Claude Code / Codex skill that uses this MCP (per-gun photos + descriptions → Serial No →
+> WooCommerce). Extracted from the gunstore-pos app as a standalone, separately distributable package.
 
 ## How it works
 
@@ -24,7 +28,6 @@ In Desk as the user you want to act as (Administrator): top-right avatar →
 
 ### 2. Configure credentials
 ```bash
-cd mcp
 cp .env.example .env
 # edit .env: FRAPPE_BASE_URL, FRAPPE_API_KEY, FRAPPE_API_SECRET
 ```
@@ -36,20 +39,37 @@ then switch to prod (`https://pos.oldsteelarsenal.com`).
 uv sync          # creates .venv and installs deps
 ```
 
-### 4. Register with Claude
+### 4. Register with your agent
+
+`/path/to/gunstore-pos-mcp` below is wherever you cloned this repo (the package is
+at the repo root). The server loads `.env` by its own file path, so credentials
+never go in the agent config.
+
 **Claude Code** — add to `.mcp.json` (project) or run `claude mcp add`:
 ```json
 {
   "mcpServers": {
     "gunstore-pos": {
       "command": "uv",
-      "args": ["run", "--directory", "/Users/Anji/Desktop/GunStore-POS/mcp", "gunstore-mcp"]
+      "args": ["run", "--directory", "/path/to/gunstore-pos-mcp", "gunstore-mcp"]
     }
   }
 }
 ```
 **Claude Desktop** — the same block in `claude_desktop_config.json`.
-Secrets stay in `mcp/.env` (loaded by the server), not in the Claude config.
+
+**Codex** — add to `~/.codex/config.toml`, then **restart Codex** (it reads MCP
+servers at startup):
+```toml
+[mcp_servers.gunstore-pos]
+command = "uv"            # or an absolute path to uv if it isn't on Codex's PATH
+args = ["run", "--directory", "/path/to/gunstore-pos-mcp", "gunstore-mcp"]
+startup_timeout_sec = 120
+```
+Verify with a quick stdio handshake (`initialize` + `tools/list`) or just list
+tools from within Codex.
+
+Secrets stay in `.env` (loaded by the server), not in the agent config.
 
 ## Tools
 
