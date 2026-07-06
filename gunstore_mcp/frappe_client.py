@@ -8,6 +8,7 @@ into a clean FrappeAPIError carrying exc_type + the user-facing _server_messages
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 from urllib.parse import quote, urljoin
 
@@ -159,6 +160,36 @@ class FrappeClient:
     def cancel_document(self, doctype: str, name: str) -> Any:
         return self._request("POST", "/api/method/frappe.client.cancel",
                              json_body={"doctype": doctype, "name": name})
+
+    def upload_file(self, file_path: str, *, doctype: str | None = None,
+                    docname: str | None = None, fieldname: str | None = None,
+                    is_private: bool = True, filename: str | None = None) -> Any:
+        """Multipart upload to Frappe's /api/method/upload_file — the one call
+        that can't go through _request (JSON-only). Returns the created File doc."""
+        url = urljoin(self.base_url + "/", "api/method/upload_file")
+        data: dict[str, str] = {"is_private": "1" if is_private else "0"}
+        if doctype:
+            data["doctype"] = doctype
+        if docname:
+            data["docname"] = docname
+        if fieldname:
+            data["fieldname"] = fieldname
+        with open(file_path, "rb") as fh:
+            resp = self.session.post(
+                url,
+                data=data,
+                files={"file": (filename or os.path.basename(file_path), fh)},
+                # Drop the session's application/json so requests can set the
+                # multipart boundary itself.
+                headers={"Content-Type": None},
+                timeout=self.timeout,
+            )
+        if resp.status_code >= 400:
+            raise self._error(resp)
+        body = resp.json()
+        if isinstance(body, dict) and "message" in body:
+            return body["message"]
+        return body
 
     def run_report(self, report_name: str, filters: dict | None = None) -> Any:
         params: dict[str, Any] = {"report_name": report_name}

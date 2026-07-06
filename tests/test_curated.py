@@ -30,6 +30,16 @@ class FakeClient:
 		self.calls.append(("update_document", doctype, name, values))
 		return {"ok": True}
 
+	def get_document(self, doctype, name):
+		self.calls.append(("get_document", doctype, name))
+		return {"ok": True}
+
+	def upload_file(self, file_path, *, doctype=None, docname=None, fieldname=None,
+			is_private=True, filename=None):
+		self.calls.append(("upload_file", file_path, doctype, docname, fieldname,
+			is_private, filename))
+		return {"ok": True}
+
 
 class FakeMCP:
 	"""Captures @mcp.tool()-decorated functions by name."""
@@ -196,6 +206,185 @@ class CuratedTools(unittest.TestCase):
 			{"item_codes": ["A"]},
 		))
 
+	# ------------------------------------------ E: settings map additions
+
+	def test_get_settings_shipstation_and_dealer(self):
+		self.tools["get_settings"]("shipstation")
+		self.assertEqual(self._last(), (
+			"get_document", "ShipStation Settings", "ShipStation Settings"))
+		self.tools["get_settings"]("dealer")
+		self.assertEqual(self._last(), (
+			"get_document", "Dealer WooCommerce Settings", "Dealer WooCommerce Settings"))
+
+	# ---------------------------------------------------- F: Woo multi-site
+
+	def test_woo_push_item_defaults_to_retail(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["woo_push_item"]("ITEM")
+		self.tools["woo_push_item"]("ITEM", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_woo_sync.woocommerce.client_api.push_item_now",
+			{"item_code": "ITEM", "site": "retail"},
+		))
+
+	def test_woo_push_item_dealer_site(self):
+		self.tools["woo_push_item"]("ITEM", site="dealer", confirm=True)
+		self.assertEqual(self._last()[2], {"item_code": "ITEM", "site": "dealer"})
+
+	def test_woo_delist_item_site(self):
+		self.tools["woo_delist_item"]("ITEM", site="dealer", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_woo_sync.woocommerce.client_api.delist_item_now",
+			{"item_code": "ITEM", "site": "dealer"},
+		))
+
+	def test_woo_reconcile_site(self):
+		self.tools["woo_reconcile"]("ITEM", site="dealer", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_woo_sync.woocommerce.client_api.reconcile_now",
+			{"item_code": "ITEM", "site": "dealer"},
+		))
+
+	def test_woo_test_connection_site(self):
+		self.tools["woo_test_connection"]()
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_woo_sync.woocommerce.client_api.test_connection",
+			{"site": "retail"},
+		))
+		self.tools["woo_test_connection"](site="dealer")
+		self.assertEqual(self._last()[2], {"site": "dealer"})
+
+	def test_woo_push_serial(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["woo_push_serial"]("SN1")
+		self.tools["woo_push_serial"]("SN1", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_woo_sync.woocommerce.client_api.push_serial_now",
+			{"serial_no": "SN1", "site": "retail"},
+		))
+
+	def test_woo_delist_serial(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["woo_delist_serial"]("SN1")
+		self.tools["woo_delist_serial"]("SN1", site="dealer", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_woo_sync.woocommerce.client_api.delist_serial_now",
+			{"serial_no": "SN1", "site": "dealer"},
+		))
+
+	# ------------------------------------------- G: order / fulfillment queue
+
+	def test_pending_orders_read_only(self):
+		self.tools["pending_orders"]()
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_core.api.manual_order.list_pending_dispositions", {},
+		))
+
+	def test_pending_web_orders_read_only(self):
+		self.tools["pending_web_orders"]()
+		self.assertEqual(self._last(), (
+			"call_method",
+			"ffl_woo_sync.woocommerce.fulfillment.list_pending_web_orders", {},
+		))
+
+	def test_dispose_order_requires_confirm(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["dispose_order"]("SI-1")
+		self.assertEqual(self.client.calls, [])
+		self.tools["dispose_order"]("SI-1", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_core.api.manual_order.dispose_order",
+			{"sales_invoice": "SI-1"},
+		))
+
+	def test_dispose_web_order_requires_confirm(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["dispose_web_order"]("WOO-1")
+		self.tools["dispose_web_order"]("WOO-1", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_woo_sync.woocommerce.fulfillment.dispose_web_order",
+			{"woo_online_order": "WOO-1"},
+		))
+
+	def test_record_payment(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["record_payment"]("SI-1", "Zelle")
+		self.tools["record_payment"]("SI-1", "Zelle", amount=100.0,
+			transaction_number="Z123", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_core.api.manual_order.record_payment",
+			{"sales_invoice": "SI-1", "mode_of_payment": "Zelle",
+			 "amount": 100.0, "transaction_number": "Z123"},
+		))
+
+	def test_push_shipment_requires_confirm(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["push_shipment"]("SI-1")
+		self.tools["push_shipment"]("SI-1", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_integrations.shipstation.api.push_shipment",
+			{"sales_invoice": "SI-1"},
+		))
+
+	def test_mark_shipped_manually_requires_confirm(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["mark_shipped_manually"]("SI-1")
+		self.tools["mark_shipped_manually"]("SI-1", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_core.api.manual_order.mark_shipped_manually",
+			{"sales_invoice": "SI-1"},
+		))
+
+	def test_shipstation_test_connection_read_only(self):
+		self.tools["shipstation_test_connection"]()
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_integrations.shipstation.api.test_connection", {},
+		))
+
+	# --------------------------------------------------------- H: POS 4473
+
+	def test_start_4473(self):
+		mapping = {"row1": "SN1"}
+		with self.assertRaises(WriteRefused):
+			self.tools["start_4473"]("POSINV-1", mapping)
+		self.tools["start_4473"]("POSINV-1", mapping, confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method",
+			"ffl_integrations.fastbound.pos_4473.start_4473_for_pos_invoice",
+			{"invoice_name": "POSINV-1", "serial_by_item_row": mapping},
+		))
+
+	def test_manager_override_4473(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["manager_override_4473"]("POSINV-1", "webhook lost")
+		self.tools["manager_override_4473"]("POSINV-1", "webhook lost", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method",
+			"ffl_integrations.fastbound.pos_4473.manager_override_4473",
+			{"invoice_name": "POSINV-1", "reason": "webhook lost"},
+		))
+
+	def test_start_transfer_4473(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["start_transfer_4473"](["SN1"], "TRANSFER-FEE", 25.0, "CUST-1")
+		self.tools["start_transfer_4473"](["SN1", "SN2"], "TRANSFER-FEE", 25.0,
+			"CUST-1", pos_profile="Main", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method",
+			"ffl_integrations.fastbound.pos_4473.start_transfer_for_pos_invoice",
+			{"serials": ["SN1", "SN2"], "fee_item": "TRANSFER-FEE",
+			 "fee_amount": 25.0, "customer": "CUST-1", "pos_profile": "Main",
+			 "invoice_name": None},
+		))
+
+	# ------------------------------------------------------- I: file upload
+
+	def test_upload_attachment(self):
+		self.tools["upload_attachment"]("/tmp/x.jpg", doctype="Serial No",
+			name="SN1", is_private=False)
+		self.assertEqual(self._last(), (
+			"upload_file", "/tmp/x.jpg", "Serial No", "SN1", None, False, None))
+
 	# ------------------------------------------------------------- coverage
 
 	def test_all_new_tools_registered(self):
@@ -204,6 +393,12 @@ class CuratedTools(unittest.TestCase):
 			"receive_goods", "add_stock", "set_stock", "toggle_service_need",
 			"push_serial_to_fastbound", "verify_supplier_ffl", "reverify_all_ffls",
 			"promote_to_item", "backfill_from_rsr", "set_serial_title",
+			"woo_push_serial", "woo_delist_serial",
+			"pending_orders", "pending_web_orders",
+			"dispose_order", "dispose_web_order", "record_payment",
+			"push_shipment", "mark_shipped_manually", "shipstation_test_connection",
+			"start_4473", "manager_override_4473", "start_transfer_4473",
+			"upload_attachment",
 		):
 			self.assertIn(name, self.tools)
 

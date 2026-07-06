@@ -15,7 +15,9 @@ records, trigger RSR/FastBound/ATF operations, run the Firearms-In-Stock report.
   whitelisted method — present and future. A **curated layer** makes the frequent
   settings/sync/report ops one call.
 - Talks to Frappe over HTTPS with token auth (`Authorization: token key:secret`).
-- **Safety**: delete/cancel/submit and destructive methods require `confirm=true`;
+- **Safety**: delete/cancel/submit and destructive methods — including this
+  domain's own high-consequence verbs (dispose / push / charge / consolidate) —
+  require `confirm=true`;
   password/credential fields are never transmitted (set those in Desk);
   schema/permission doctypes are read-only.
 
@@ -90,15 +92,25 @@ Secrets stay in `.env` (loaded by the server), not in the agent config.
 ### Curated
 | Tool | Purpose |
 |---|---|
-| `get_settings` / `update_settings` | `ffl` \| `fastbound` \| `rsr` \| `payroc` |
-| `rsr_sync_catalog` / `rsr_test_connection` | RSR catalog sync / FTPS probe |
-| `fastbound_test_connection` | FastBound API probe |
-| `atf_verify_ffl` | EZ Check verify + upsert record (needs `confirm=true`) |
+| `get_settings` / `update_settings` | `ffl` \| `fastbound` \| `rsr` \| `payroc` \| `woocommerce` \| `dealer` \| `shipstation` |
+| `find_item` / `item_stock` / `available_serials` | typeahead item search / stock per item / in-stock serials + per-gun prices |
 | `firearms_in_stock` | the Firearms In Stock report |
-| `find_item` | typeahead item search |
-| `woo_test_connection` | WooCommerce API probe |
-| `woo_push_item` / `woo_delist_item` / `woo_reconcile` | list / delist / reconcile an Item on Woo (need `confirm=true`) |
-| `set_serial_title` | set a per-gun Woo listing title (writes `Serial No.item_name`; takes effect on next push) |
+| `receive_goods` | Purchase Receipt + FFL acquisitions + FastBound push (`confirm`) |
+| `add_stock` / `set_stock` | non-serialized stock add / absolute set (`confirm`) |
+| `toggle_service_need` | gunsmith flag on a Serial No (`confirm`) |
+| `rsr_catalog_search` / `rsr_sync_catalog` / `rsr_test_connection` | RSR catalog search / full sync / FTPS probe |
+| `promote_to_item` / `backfill_from_rsr` | RSR catalog row → sellable Item / backfill Item fields (`confirm`) |
+| `fastbound_test_connection` / `push_serial_to_fastbound` / `boundbook_reconcile` | FB probe / per-gun correction push (`confirm`) / bound-book reconcile (apply needs `confirm`) |
+| `atf_verify_ffl` / `verify_supplier_ffl` / `reverify_all_ffls` | ATF eZ-Check verifies (`confirm`) |
+| `woo_test_connection` / `woo_push_item` / `woo_delist_item` / `woo_reconcile` | store probe / list / delist / reconcile an Item — all take `site: retail\|dealer` (writes need `confirm`) |
+| `woo_push_serial` / `woo_delist_serial` | list / delist ONE gun (SKU `item_code::serial`; `site`; `confirm`) |
+| `set_serial_title` | per-gun Woo listing title (writes `Serial No.item_name`; takes effect on next push) |
+| `pending_orders` / `pending_web_orders` | the Pending Order queue: counter/dealer rows + paid web orders (read-only) |
+| `dispose_order` / `dispose_web_order` | book the FFL transfer dispositions — stock-out + FastBound push (`confirm`) |
+| `record_payment` | Payment Entry against an unpaid submitted invoice; Zelle needs `transaction_number` (`confirm`) |
+| `push_shipment` / `mark_shipped_manually` / `shipstation_test_connection` | ShipStation label push (`confirm`) / no-push escape hatch (`confirm`) / probe |
+| `start_4473` / `manager_override_4473` / `start_transfer_4473` | 4473 kickoff / stuck-sale manager override / customer transfer (`confirm`) |
+| `upload_attachment` | multipart file upload → File doc, optionally attached to a doctype+name / Attach field |
 
 ## Security notes
 

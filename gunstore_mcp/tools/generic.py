@@ -16,10 +16,13 @@ from ..safety import (
 
 # A method is confirm-gated when its FINAL path segment matches a destructive /
 # consequential verb (matching the segment, not the whole dotted path, avoids
-# gating on a module name).
+# gating on a module name). The second row is this domain's own high-consequence
+# verbs: dispose (bound-book disposition + stock-out), push (live Woo/FastBound/
+# ShipStation writes), charge (card terminal), consolidate (posts stock + SI).
 _DESTRUCTIVE_METHOD = re.compile(
     r"(delete|destroy|drop|truncate|wipe|reset|purge|cancel|void|refund"
-    r"|force|remove|rename|bulk|import)",
+    r"|force|remove|rename|bulk|import"
+    r"|dispose|push|charge|consolidate)",
     re.I,
 )
 

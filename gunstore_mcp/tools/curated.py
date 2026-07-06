@@ -13,6 +13,8 @@ _SETTINGS = {
     "rsr": "RSR Settings",
     "payroc": "Payroc Settings",
     "woocommerce": "WooCommerce Settings",
+    "dealer": "Dealer WooCommerce Settings",
+    "shipstation": "ShipStation Settings",
 }
 
 
@@ -28,14 +30,16 @@ def _resolve(which: str) -> str:
 def register(mcp: Any) -> None:
     @mcp.tool()
     def get_settings(which: str) -> Any:
-        """Read an integration's Settings. which: ffl | fastbound | rsr | payroc | woocommerce.
+        """Read an integration's Settings. which: ffl | fastbound | rsr | payroc |
+        woocommerce | dealer (dealer-portal WooCommerce) | shipstation.
         Password fields are never returned by Frappe."""
         dt = _resolve(which)
         return get_client().get_document(dt, dt)
 
     @mcp.tool()
     def update_settings(which: str, values: dict) -> Any:
-        """Update an integration's Settings. which: ffl | fastbound | rsr | payroc | woocommerce.
+        """Update an integration's Settings. which: ffl | fastbound | rsr | payroc |
+        woocommerce | dealer (dealer-portal WooCommerce) | shipstation.
         Credential/password fields are stripped — set those in Desk."""
         dt = _resolve(which)
         clean, stripped = strip_passwords(dt, values)
@@ -57,41 +61,67 @@ def register(mcp: Any) -> None:
         return get_client().call_method("ffl_integrations.fastbound.client_api.test_connection")
 
     @mcp.tool()
-    def woo_test_connection() -> Any:
-        """Probe the WooCommerce API connection (read-only)."""
-        return get_client().call_method("ffl_woo_sync.woocommerce.client_api.test_connection")
+    def woo_test_connection(site: str = "retail") -> Any:
+        """Probe a WooCommerce store's API connection (read-only).
+        site: retail (main store) | dealer (dealer portal)."""
+        return get_client().call_method(
+            "ffl_woo_sync.woocommerce.client_api.test_connection", {"site": site}
+        )
 
     @mcp.tool()
-    def woo_push_item(item_code: str, confirm: bool = False) -> Any:
+    def woo_push_item(item_code: str, site: str = "retail", confirm: bool = False) -> Any:
         """Push (create or update) the WooCommerce product(s) for an Item.
         Per-serial firearms push every Active Serial No individually; non-firearm
-        and uniform-price firearms push a single item-level product. Consequential
+        and uniform-price firearms push a single item-level product. For ONE gun
+        use woo_push_serial instead. site: retail | dealer. Consequential
         — confirm=true."""
-        require_confirm(f"woo_push_item {item_code}", confirm)
+        require_confirm(f"woo_push_item {item_code} ({site})", confirm)
         return get_client().call_method(
             "ffl_woo_sync.woocommerce.client_api.push_item_now",
-            {"item_code": item_code},
+            {"item_code": item_code, "site": site},
         )
 
     @mcp.tool()
-    def woo_delist_item(item_code: str, confirm: bool = False) -> Any:
+    def woo_delist_item(item_code: str, site: str = "retail", confirm: bool = False) -> Any:
         """Set the WooCommerce product for an Item to Draft + stock 0, hiding it
-        from the shop immediately. confirm=true."""
-        require_confirm(f"woo_delist_item {item_code}", confirm)
+        from the shop immediately. site: retail | dealer. confirm=true."""
+        require_confirm(f"woo_delist_item {item_code} ({site})", confirm)
         return get_client().call_method(
             "ffl_woo_sync.woocommerce.client_api.delist_item_now",
-            {"item_code": item_code},
+            {"item_code": item_code, "site": site},
         )
 
     @mcp.tool()
-    def woo_reconcile(item_code: str, confirm: bool = False) -> Any:
+    def woo_reconcile(item_code: str, site: str = "retail", confirm: bool = False) -> Any:
         """Push the item-level product AND all Active Serial Nos for an Item in
         one call. Suitable for the initial listing of a per-serial firearm where
-        everything needs to go live at once. confirm=true."""
-        require_confirm(f"woo_reconcile {item_code}", confirm)
+        everything needs to go live at once. site: retail | dealer. confirm=true."""
+        require_confirm(f"woo_reconcile {item_code} ({site})", confirm)
         return get_client().call_method(
             "ffl_woo_sync.woocommerce.client_api.reconcile_now",
-            {"item_code": item_code},
+            {"item_code": item_code, "site": site},
+        )
+
+    @mcp.tool()
+    def woo_push_serial(serial_no: str, site: str = "retail", confirm: bool = False) -> Any:
+        """Push (create or update) the WooCommerce product for ONE firearm Serial No
+        — the per-gun listing action (SKU item_code::serial). Prefer this over
+        woo_push_item when only specific guns changed: woo_push_item pushes EVERY
+        Active serial of that item. site: retail | dealer. confirm=true."""
+        require_confirm(f"woo_push_serial {serial_no} ({site})", confirm)
+        return get_client().call_method(
+            "ffl_woo_sync.woocommerce.client_api.push_serial_now",
+            {"serial_no": serial_no, "site": site},
+        )
+
+    @mcp.tool()
+    def woo_delist_serial(serial_no: str, site: str = "retail", confirm: bool = False) -> Any:
+        """Set ONE Serial No's WooCommerce product to Draft + stock 0, hiding that
+        gun from the shop immediately. site: retail | dealer. confirm=true."""
+        require_confirm(f"woo_delist_serial {serial_no} ({site})", confirm)
+        return get_client().call_method(
+            "ffl_woo_sync.woocommerce.client_api.delist_serial_now",
+            {"serial_no": serial_no, "site": site},
         )
 
     @mcp.tool()
@@ -100,7 +130,7 @@ def register(mcp: Any) -> None:
         Serial No.item_name). A per-serial firearm's Woo product name is taken from
         Serial No.item_name, falling back to the shared Item name — so this gives one
         physical gun its own title instead of the model name shared by every serial.
-        Not yet live: it takes effect on the next push (push_serial_now / woo_push_item).
+        Not yet live: it takes effect on the next push (woo_push_serial / woo_push_item).
         The field is fetch_if_empty so the value persists once set."""
         return get_client().update_document("Serial No", serial_no, {"item_name": title})
 
@@ -282,4 +312,156 @@ def register(mcp: Any) -> None:
         require_confirm("backfill_from_rsr", confirm)
         return get_client().call_method(
             "ffl_integrations.rsr.promote.backfill_from_rsr", {"item_codes": item_codes}
+        )
+
+    # ---- E. order / fulfillment queue (the Pending Order page's actions) ------
+
+    @mcp.tool()
+    def pending_orders() -> Any:
+        """The Pending Order queue, counter + dealer rows: submitted firearm
+        shipments that still need disposing, payment, or a ShipStation push.
+        Web-shop rows come from pending_web_orders. Read-only."""
+        return get_client().call_method(
+            "ffl_core.api.manual_order.list_pending_dispositions"
+        )
+
+    @mcp.tool()
+    def pending_web_orders() -> Any:
+        """Paid WooCommerce web orders awaiting fulfillment — the source='woo'
+        rows of the Pending Order page. Read-only."""
+        return get_client().call_method(
+            "ffl_woo_sync.woocommerce.fulfillment.list_pending_web_orders"
+        )
+
+    @mcp.tool()
+    def dispose_order(sales_invoice: str, confirm: bool = False) -> Any:
+        """Dispose (ship) the firearms on a submitted counter/dealer order: books
+        one FFL transfer disposition per not-yet-disposed serial; each disposition's
+        on_submit issues the stock-out and pushes FastBound. Server blocks it while
+        unpaid or the destination FFL is invalid; idempotent. VERIFY the destination
+        FFL and serials first (the UI makes staff tick exactly that). confirm=true."""
+        require_confirm(f"dispose_order {sales_invoice}", confirm)
+        return get_client().call_method(
+            "ffl_core.api.manual_order.dispose_order",
+            {"sales_invoice": sales_invoice},
+        )
+
+    @mcp.tool()
+    def dispose_web_order(woo_online_order: str, confirm: bool = False) -> Any:
+        """Dispose the firearms on a paid Woo Online Order (web row). No ShipStation
+        push here — the store's own WooCommerce plugin ships web orders. Idempotent
+        per {serial, order}. confirm=true."""
+        require_confirm(f"dispose_web_order {woo_online_order}", confirm)
+        return get_client().call_method(
+            "ffl_woo_sync.woocommerce.fulfillment.dispose_web_order",
+            {"woo_online_order": woo_online_order},
+        )
+
+    @mcp.tool()
+    def record_payment(
+        sales_invoice: str, mode_of_payment: str, amount: float | None = None,
+        transaction_number: str | None = None, confirm: bool = False,
+    ) -> Any:
+        """Record a later payment against a submitted, not-fully-paid Sales Invoice
+        — books + submits a Payment Entry and returns the new balance. amount
+        omitted = the full outstanding; mode_of_payment 'Zelle' requires
+        transaction_number. confirm=true."""
+        require_confirm(f"record_payment {sales_invoice}", confirm)
+        return get_client().call_method(
+            "ffl_core.api.manual_order.record_payment",
+            {"sales_invoice": sales_invoice, "mode_of_payment": mode_of_payment,
+             "amount": amount, "transaction_number": transaction_number},
+        )
+
+    @mcp.tool()
+    def push_shipment(sales_invoice: str, confirm: bool = False) -> Any:
+        """Push a submitted order to ShipStation so staff can buy the label there —
+        the Pending Order 'Ship' action. Synchronous, idempotent, fails closed on an
+        invalid FFL or unpaid order; independent of the Dispose step. confirm=true."""
+        require_confirm(f"push_shipment {sales_invoice}", confirm)
+        return get_client().call_method(
+            "ffl_integrations.shipstation.api.push_shipment",
+            {"sales_invoice": sales_invoice},
+        )
+
+    @mcp.tool()
+    def mark_shipped_manually(sales_invoice: str, confirm: bool = False) -> Any:
+        """Clear a DISPOSED order from the Pending Order queue without a ShipStation
+        push (label bought elsewhere / integration off / FFL expired after dispose).
+        Refuses while any firearm is undisposed. confirm=true."""
+        require_confirm(f"mark_shipped_manually {sales_invoice}", confirm)
+        return get_client().call_method(
+            "ffl_core.api.manual_order.mark_shipped_manually",
+            {"sales_invoice": sales_invoice},
+        )
+
+    @mcp.tool()
+    def shipstation_test_connection() -> Any:
+        """Probe the ShipStation API (GET /v2/carriers; read-only)."""
+        return get_client().call_method(
+            "ffl_integrations.shipstation.api.test_connection"
+        )
+
+    # ---- F. POS 4473 / transfers -----------------------------------------------
+
+    @mcp.tool()
+    def start_4473(invoice_name: str, serial_by_item_row: dict, confirm: bool = False) -> Any:
+        """Kick off the ATF 4473 for a firearm POS/Sales Invoice: holds the invoice
+        in Draft and opens a FastBound 4473 for the cashier to complete.
+        serial_by_item_row maps invoice ITEM ROW name -> actual serial, e.g.
+        {"a1b2c3d4": "SN123"}. Returns the FastBound URL. confirm=true."""
+        require_confirm(f"start_4473 {invoice_name}", confirm)
+        return get_client().call_method(
+            "ffl_integrations.fastbound.pos_4473.start_4473_for_pos_invoice",
+            {"invoice_name": invoice_name, "serial_by_item_row": serial_by_item_row},
+        )
+
+    @mcp.tool()
+    def manager_override_4473(invoice_name: str, reason: str, confirm: bool = False) -> Any:
+        """Manager force-complete a stuck firearm POS sale whose 4473 WAS genuinely
+        completed in FastBound but never synced back (edited serial, deleted
+        disposition, FastBound down). Mints the Retail Sale disposition(s) marked
+        manual_override with WHO + WHY — auditable; does NOT push FastBound, so
+        reconcile the bound book separately. reason is required. confirm=true."""
+        require_confirm(f"manager_override_4473 {invoice_name}", confirm)
+        return get_client().call_method(
+            "ffl_integrations.fastbound.pos_4473.manager_override_4473",
+            {"invoice_name": invoice_name, "reason": reason},
+        )
+
+    @mcp.tool()
+    def start_transfer_4473(
+        serials: list[str], fee_item: str, fee_amount: float, customer: str,
+        pos_profile: str | None = None, invoice_name: str | None = None,
+        confirm: bool = False,
+    ) -> Any:
+        """Start a customer-transfer 4473: builds the transfer POS Invoice server-side
+        ($0 line per gun + one Transfer Fee line) and opens the FastBound 4473. Get
+        fee_item and the default fee via frappe_run_method
+        'ffl_core.firearm.get_transfer_config'. FFL-dealer customers are refused
+        server-side (their 4473 gate doesn't apply). confirm=true."""
+        require_confirm(f"start_transfer_4473 {customer}", confirm)
+        return get_client().call_method(
+            "ffl_integrations.fastbound.pos_4473.start_transfer_for_pos_invoice",
+            {"serials": serials, "fee_item": fee_item, "fee_amount": fee_amount,
+             "customer": customer, "pos_profile": pos_profile,
+             "invoice_name": invoice_name},
+        )
+
+    # ---- G. file upload ----------------------------------------------------------
+
+    @mcp.tool()
+    def upload_attachment(
+        file_path: str, doctype: str | None = None, name: str | None = None,
+        fieldname: str | None = None, is_private: bool = True,
+    ) -> Any:
+        """Upload a LOCAL file to the POS as a File document, optionally attached to
+        a document (doctype + name) and/or set into its Attach field (fieldname).
+        Returns the File doc incl. file_url. Default is_private=true — product
+        photos that WooCommerce must sideload need is_private=false. For bulk
+        photo+gallery imports prefer the firearm-listing-import script (it resizes
+        images first; oversized originals break the Woo push)."""
+        return get_client().upload_file(
+            file_path, doctype=doctype, docname=name,
+            fieldname=fieldname, is_private=is_private,
         )
