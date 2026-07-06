@@ -75,6 +75,8 @@ Secrets stay in `.env` (loaded by the server), not in the agent config.
 
 ## Tools
 
+> **中文速查手册（按"你想干什么"组织，含安全须知与替代路径）：[TOOLS.md](TOOLS.md)**
+
 ### Generic backbone
 | Tool | Purpose |
 |---|---|
