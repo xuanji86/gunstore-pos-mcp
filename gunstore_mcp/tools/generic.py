@@ -35,16 +35,24 @@ _DESTRUCTIVE_METHOD = re.compile(
 
 # High-consequence whitelisted writes whose LAST path segment carries no
 # destructive verb, so the regex above cannot see them (review q2, run
-# 2026-07-16-mcp-cpa-mode). Gated by EXACT dotted name — list names one by
-# one, no prefixes or wildcards. "update"/"create" are deliberately not regex
-# verbs (they would over-gate half of Frappe's read-adjacent surface):
-# update_order and update_consignment_line_prices rewrite money fields on
-# live orders; create_consignment_out with dispose_now=1 books dispositions
-# and moves stock, well beyond what "create" implies.
+# 2026-07-16-mcp-cpa-mode; symmetry sweep in PR #4 review). Gated by EXACT
+# dotted name — list names one by one, no prefixes or wildcards.
+# "update"/"create"/"set"/"add"/"record" are deliberately not regex verbs
+# (they would over-gate half of Frappe's read-adjacent surface).
+# Inclusion criterion: a whitelisted method that books money, moves stock, or
+# flips a compliance/tax state, and whose bare frappe_run_method call would
+# otherwise pass ungated. Curated wrappers remain the primary gate; this set
+# is the backstop for the expert bare path — when a new server write ships,
+# check it against this criterion.
 _ALWAYS_CONFIRM_METHODS = {
     "ffl_core.api.manual_order.update_order",
     "ffl_core.api.consignment_out.update_consignment_line_prices",
     "ffl_core.api.consignment_out.create_consignment_out",
+    "ffl_core.api.manual_order.record_payment",
+    "ffl_core.api.consignment_orders.create_consignment_invoice_now",
+    "ffl_core.api.item_admin.add_stock",
+    "ffl_core.api.item_admin.set_stock",
+    "ffl_core.api.manual_order.set_customer_tax_exempt",
 }
 
 # Frappe globally whitelists these generic mutators at /api/method — reaching

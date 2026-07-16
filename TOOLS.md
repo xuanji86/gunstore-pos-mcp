@@ -141,7 +141,7 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 - `frappe_list_documents` / `frappe_get_document` / `frappe_describe_doctype` — 查任何 doctype（先 describe 看字段名）
 - `frappe_create_document` / `frappe_update_document` — 建/改任何记录（凭据字段自动剥除）
 - `frappe_delete_document` / `frappe_submit_document` / `frappe_cancel_document` — 删/提交/作废（都要 confirm）
-- `frappe_run_method` — 按点路径调任何白名单方法；方法名含 delete/cancel/refund/**dispose/push/charge/consolidate/ship/return/receive/sold/settle/onboard** 等危险动词时要 confirm
+- `frappe_run_method` — 按点路径调任何白名单方法；方法名含 delete/cancel/refund/**dispose/push/charge/consolidate/ship/return/receive/sold/settle/onboard** 等危险动词时要 confirm。另有一批**无危险动词但高后果**的方法走显式精确名单(`_ALWAYS_CONFIRM_METHODS`:update_order / update_consignment_line_prices / create_consignment_out / record_payment / create_consignment_invoice_now / add_stock / set_stock / set_customer_tax_exempt),裸调同样要 confirm——收录判据:记钱、动库存、改合规/税务状态
 - `frappe_run_report` — 跑任何报表
 
 **尚无专用工具、常用点路径备忘**（都走 `frappe_run_method`）：
