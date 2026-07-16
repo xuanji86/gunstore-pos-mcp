@@ -75,7 +75,10 @@ def register(mcp: Any) -> None:
         excluded (is_cancelled=0 — cancel+amend refund reworks drop out
         automatically). Truncation is explicit: when more rows exist than
         `limit`, the result carries truncated:true — never a silent cut, a
-        silently-shortened ledger reconciles to wrong numbers. Read-only."""
+        silently-shortened ledger reconciles to wrong numbers. limit is
+        clamped to 1..5000 (0 or empty falls back to 500 — NOT Frappe's
+        "0 = all" convention); for more rows, paginate by narrowing the date
+        range. Read-only."""
         limit = max(1, min(int(limit or 500), 5000))
         filters: list[list] = [
             ["posting_date", ">=", from_date],
@@ -228,6 +231,13 @@ def register(mcp: Any) -> None:
                 if debit:
                     other_d[vt] = other_d.get(vt, 0) + debit
         closing = opening + total_c - total_d
+        # Belt-and-suspenders (review question, lead-adjudicated KEEP): with
+        # today's control flow this Σbuckets==Σtotals check is structurally
+        # always-true — every period row is added to totals AND to exactly one
+        # bucket in the same if/elif/else. The real guard is the cent-exact
+        # closing identity above (independently recomputed in tests). This
+        # assertion exists to catch a FUTURE refactor that adds a bucket path
+        # without keeping the totals in lockstep.
         if (c_si + c_je + sum(other_c.values()) != total_c
                 or d_si + d_je + sum(other_d.values()) != total_d):
             raise RuntimeError(
