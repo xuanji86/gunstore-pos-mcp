@@ -29,6 +29,7 @@
 | 看待处理的柜台/经销商订单 | `pending_orders` | Pending Order 队列：还没 dispose、没收够钱、或还没推 ShipStation 的单子。**寄售出库不在这里**——寄售有独立队列，见第 5 节 |
 | 看待发货的网店订单 | `pending_web_orders` | 已付款、等 dispose 的 Woo 订单 |
 | 看寄售在途/结算队列 | `consignment_queue` / `consignment_dealer_orders` | 寄售全套见第 5 节 |
+| 财务/税务报表(销售、总账、三表、税负、AR/AP) | `sales_report` / `gl_entries` / `financial_statement` / `tax_liability` / `ar_ap_summary` | CPA 报表工具包,全模式可用,见第 10 节 |
 | 搜 RSR 批发目录（不是本店库存） | `rsr_catalog_search` | 按关键词/UPC/RSR 编号/厂商编号搜 |
 | 跑任意报表 | `frappe_run_report` | 报表名：`Sales Report`（营收+毛利；filters 传 `view`="Order"/"Order Detail"/"Product" 切三种视图，默认 Order，返回含 report_summary 卡片）、`Pending 4473 Orders`（卡在 4473 的单）、`Open Special Orders`（特殊订货看板）、`Pending Transfer Pickups`（待取的转入枪） |
 | 查任何记录 | `frappe_list_documents` / `frappe_get_document` | 万能查询，见第 9 节 |
@@ -97,7 +98,7 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 
 **结算是自动的**：经销商在门户点 Mark Sold 后系统自动出结算发票（失败进结算队列重试）。
 **撤结算**：用 `frappe_cancel_document` 取消那张结算 Sales Invoice——取消钩子会对称反开父单（Closed→Shipped），无需也没有专用端点。
-**代经销商签收/报售（mark_received / mark_sold）做不了**：那两个方法绑定门户 dealer 会话身份，管理密钥调用会被拒；见第 10 节。
+**代经销商签收/报售（mark_received / mark_sold）做不了**：那两个方法绑定门户 dealer 会话身份，管理密钥调用会被拒；见第 11 节。
 
 ## 6. 4473 / 合规（FastBound、ATF）
 
@@ -160,7 +161,44 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 | 网单收入发票失败重试 | `ffl_woo_sync.woocommerce.revenue.create_web_invoice_now` |
 | 撤销一笔寄售结算 | `frappe_cancel_document` 取消那张结算 Sales Invoice（钩子自动反开父单） |
 
-## 10. 这个 MCP **做不了**的事（别硬试，走别的路）
+## 10. CPA 模式（只读会计面）+ 报表工具包
+
+**模式开关**：启动环境变量 `GUNSTORE_MCP_MODE=cpa`（默认 `full` = 全部 67 工具，行为与以前完全一致；未知值直接拒绝启动，不会静默降级成可写）。cpa 模式给会计/CPA 用：**写面在工具列表里物理不存在**，不是"存在但会拒绝"。三层防御，缺一层其余仍兜底：
+
+1. **注册层**：tools/list 恰好 = 下面 18 个名字（集合相等，测试钉死）；
+2. **客户端层**：一切写方法 + 未逐一列名的点路径方法（`frappe_run_method` 整个不注册）→ `CpaModeRefused`；只读点路径 allowlist 逐一列名，禁通配；
+3. **Settings 层**：7 个集成 Settings doctype 的 get/list 读也被挡（配置面对会计无用，密码遮蔽是框架行为不是本仓保证）。
+
+**cpa 模式的 18 个工具**：
+- 通用查（4）：`frappe_list_documents` / `frappe_get_document` / `frappe_describe_doctype` / `frappe_run_report`
+- 业务只读（9）：`find_item` / `item_stock` / `firearms_in_stock` / `pending_orders` / `pending_web_orders` / `consignment_queue` / `consignment_dealers` / `consignment_serials` / `consignment_dealer_orders`
+- 报表工具包（5，见下；**full 模式同样可用**）
+
+注意 cpa 模式**没有** `available_serials`（其默认剔除寄售/暂扣枪，在盘点语境会漏枪——盘点用 `firearms_in_stock`）。
+
+**报表工具包**（口径权威 = run 2026-07-16-mcp-cpa-mode/cpa-review.md §2/§3）：
+
+| 你想… | 工具 | 说明 |
+|---|---|---|
+| 看期间营收+毛利（报税视图） | `sales_report(from_date, to_date, view="Product", channel?, product_type?)` | Sales Report 原样透传（含 report_summary 卡片）；view: Order / Order Detail / Product；channel: POS / Web / B2B-Manual |
+| 追总账明细 | `gl_entries(from_date, to_date, account?, party?, voucher_no?, voucher_type?, limit=500)` | 恒定 `is_cancelled=0`（cancel+amend 被撤单自动出列）；**截断显式** `truncated:true`，绝不静默截断 |
+| 跑三大财务报表 | `financial_statement(statement, from_date, to_date, periodicity="Monthly")` | statement: `pnl` / `balance_sheet` / `trial_balance`；P&L/BS 走 Date Range;Trial Balance 需日期落在同一 Fiscal Year（自动解析,跨年拒绝） |
+| 查期间销售税负债滚动表 | `tax_liability(from_date, to_date)` | opening/collected/remitted/closing 按 voucher 分列,非常规 voucher fail-closed 单列;科目动态解析自默认销售税模板;**注意发票的 "Total Taxes and Charges" 含运费,不是销售税** |
+| 查应收/应付账龄 | `ar_ap_summary(kind, as_on_date)` | kind: `ar` / `ap`;Posting Date 基准,30/60/90/120 账龄桶;寄售结算应收在 AR 里按经销商列示 |
+
+**月结/报税常用标准报表**（`frappe_run_report` 直跑,键名已核对 ERPNext v16 源码）：
+
+| 报表名 | 关键 filter 键 |
+|---|---|
+| `Sales Register` | company, from_date, to_date, customer, warehouse, mode_of_payment, item_group |
+| `General Ledger` | company, from_date, to_date, account, party_type+party, voucher_no, categorize_by |
+| `Stock Balance` | company, from_date, to_date, item_code, item_group, warehouse |
+| `Accounts Receivable` / `Accounts Payable` | company, report_date, ageing_based_on("Posting Date"/"Due Date"), range("30, 60, 90, 120") |
+| `Trial Balance` | company, **fiscal_year(必填)**, from_date, to_date |
+
+（缓建备忘：`stock_valuation` 专用工具——年终存货 tie-out 直接 `frappe_run_report("Stock Balance", …)` 即可。）
+
+## 11. 这个 MCP **做不了**的事（别硬试，走别的路）
 
 | 做不了 | 替代路径 |
 |---|---|
@@ -175,5 +213,5 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 
 ---
 
-*工具总数 62（10 个通用 + 52 个专用）。对应版本 v0.3.0；工具行为以 README.md
+*工具总数 67（10 个通用 + 52 个专用 + 5 个报表）；`GUNSTORE_MCP_MODE=cpa` 只读模式恰注册其中 18 个。对应版本 v0.4.0；工具行为以 README.md
 和源码 `gunstore_mcp/tools/` 为准。*

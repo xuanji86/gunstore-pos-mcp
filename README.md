@@ -78,7 +78,14 @@ Secrets stay in `.env` (loaded by the server), not in the agent config.
 
 > **中文速查手册（按"你想干什么"组织，含安全须知与替代路径）：[TOOLS.md](TOOLS.md)**
 
-62 tools total: 10 generic + 52 curated.
+67 tools total: 10 generic + 52 curated + 5 CPA reports.
+
+**Modes**: `GUNSTORE_MCP_MODE=cpa` starts a read-only accountant surface —
+exactly 18 tools (the write surface is never registered), a per-name read-only
+method allowlist at the client layer, and the 7 integration Settings doctypes
+blocked from reads. Default (`full`) is the whole surface. Register a second
+server entry (e.g. `gunstore-pos-cpa`) with the same command plus
+`"env": {"GUNSTORE_MCP_MODE": "cpa"}` to run both side by side.
 
 ### Generic backbone
 | Tool | Purpose |
@@ -120,6 +127,15 @@ Secrets stay in `.env` (loaded by the server), not in the agent config.
 | `retry_consignment_invoice` / `return_consignment_lines` / `cancel_consignment` | settlement-invoice retry / take unsold guns back / cancel line-or-draft (`confirm`; cancel needs `reason`) |
 | `start_4473` / `manager_override_4473` / `start_transfer_4473` | 4473 kickoff / stuck-sale manager override / customer transfer (`confirm`) |
 | `upload_attachment` | multipart file upload → File doc, optionally attached to a doctype+name / Attach field |
+
+### CPA reports (read-only; registered in both modes)
+| Tool | Purpose |
+|---|---|
+| `sales_report` | the POS Sales Report, payload passed through unchanged (views Order / Order Detail / Product; channel POS/Web/B2B-Manual) |
+| `gl_entries` | GL rows for a date range (`is_cancelled=0` always; explicit `truncated:true`) |
+| `financial_statement` | P&L / Balance Sheet (Date Range) / Trial Balance (fiscal-year auto-resolved) |
+| `tax_liability` | sales-tax liability roll-forward from the GL — accounts resolved from the default sales-tax template, vouchers bucketed fail-closed, cent-exact identity asserted |
+| `ar_ap_summary` | aged AR / AP as of a date (Posting Date basis, 30/60/90/120) |
 
 ## Security notes
 
