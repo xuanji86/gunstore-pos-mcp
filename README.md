@@ -16,7 +16,8 @@ records, trigger RSR/FastBound/ATF operations, run the Firearms-In-Stock report.
   settings/sync/report ops one call.
 - Talks to Frappe over HTTPS with token auth (`Authorization: token key:secret`).
 - **Safety**: delete/cancel/submit and destructive methods — including this
-  domain's own high-consequence verbs (dispose / push / charge / consolidate) —
+  domain's own high-consequence verbs (dispose / push / charge / consolidate /
+  ship / return / receive / sold / settle / onboard) —
   require `confirm=true`;
   password/credential fields are never transmitted (set those in Desk);
   schema/permission doctypes are read-only.
@@ -77,6 +78,8 @@ Secrets stay in `.env` (loaded by the server), not in the agent config.
 
 > **中文速查手册（按"你想干什么"组织，含安全须知与替代路径）：[TOOLS.md](TOOLS.md)**
 
+62 tools total: 10 generic + 52 curated.
+
 ### Generic backbone
 | Tool | Purpose |
 |---|---|
@@ -107,10 +110,14 @@ Secrets stay in `.env` (loaded by the server), not in the agent config.
 | `woo_test_connection` / `woo_push_item` / `woo_delist_item` / `woo_reconcile` | store probe / list / delist / reconcile an Item — all take `site: retail\|dealer` (writes need `confirm`) |
 | `woo_push_serial` / `woo_delist_serial` | list / delist ONE gun (SKU `item_code::serial`; `site`; `confirm`) |
 | `set_serial_title` | per-gun Woo listing title (writes `Serial No.item_name`; takes effect on next push) |
-| `pending_orders` / `pending_web_orders` | the Pending Order queue: counter/dealer rows + paid web orders (read-only) |
+| `pending_orders` / `pending_web_orders` | the Pending Order queue: counter/dealer rows + paid web orders (read-only; consignments live in `consignment_queue`) |
 | `dispose_order` / `dispose_web_order` | book the FFL transfer dispositions — stock-out + FastBound push (`confirm`) |
 | `record_payment` | Payment Entry against an unpaid submitted invoice; Zelle needs `transaction_number` (`confirm`) |
+| `cancel_order` | cancel a submitted counter/dealer order — cascades disposition/stock/FastBound/ShipStation reversal + refund (`confirm` + `reason`) |
 | `push_shipment` / `mark_shipped_manually` / `shipstation_test_connection` | ShipStation label push (`confirm`) / no-push escape hatch (`confirm`) / probe |
+| `consignment_queue` / `consignment_dealers` / `consignment_serials` / `consignment_dealer_orders` | outbound-consignment reads: At-Dealer queue / shippable FFL dealers / pickable serials / settlement queue |
+| `create_consignment_out` / `ship_consignment_out` / `push_consignment_shipment` / `mark_consignment_shipped` | build / dispose+ship / ShipStation push / manual-ship w/ tracking (`confirm`) |
+| `retry_consignment_invoice` / `return_consignment_lines` / `cancel_consignment` | settlement-invoice retry / take unsold guns back / cancel line-or-draft (`confirm`; cancel needs `reason`) |
 | `start_4473` / `manager_override_4473` / `start_transfer_4473` | 4473 kickoff / stuck-sale manager override / customer transfer (`confirm`) |
 | `upload_attachment` | multipart file upload → File doc, optionally attached to a doctype+name / Attach field |
 
