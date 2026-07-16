@@ -617,6 +617,26 @@ def register(mcp: Any) -> None:
             {"consignment_out": consignment_out, "reason": reason},
         )
 
+    @mcp.tool()
+    def update_consignment_prices(
+        consignment_out: str, prices: dict, confirm: bool = False,
+    ) -> Any:
+        """Edit the per-consignment price snapshot on At Dealer lines — the
+        queue's "Edit prices" dialog (PR #224). prices: {line_name: {"cost":
+        required > 0, "msrp": tri-state}} — omit the "msrp" key to keep the
+        stored MSRP, send "" / null to clear it, anything else must be > 0.
+        Writes ONLY this shipment's line snapshot ("Dealer Price" + MSRP),
+        never Serial No / Item masters; settlement and the dealer portal read
+        the same snapshot, so both follow automatically. Server gates: line
+        must be At Dealer with no booked settlement invoice; the whole batch
+        is validated before anything is written (one bad line rejects all).
+        Line names come from consignment_queue. confirm=true."""
+        require_confirm(f"update_consignment_prices {consignment_out}", confirm)
+        return get_client().call_method(
+            "ffl_core.api.consignment_out.update_consignment_line_prices",
+            {"consignment_out": consignment_out, "prices": prices},
+        )
+
     # ---- H. counter-order cancel ---------------------------------------------
 
     @mcp.tool()

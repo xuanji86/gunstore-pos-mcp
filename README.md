@@ -78,7 +78,7 @@ Secrets stay in `.env` (loaded by the server), not in the agent config.
 
 > **中文速查手册（按"你想干什么"组织，含安全须知与替代路径）：[TOOLS.md](TOOLS.md)**
 
-67 tools total: 10 generic + 52 curated + 5 CPA reports.
+68 tools total: 10 generic + 53 curated + 5 CPA reports.
 
 **Modes**: `GUNSTORE_MCP_MODE=cpa` starts a read-only accountant surface —
 exactly 18 tools (the write surface is never registered), a per-name read-only
@@ -86,6 +86,35 @@ method allowlist at the client layer, and the 7 integration Settings doctypes
 blocked from reads. Default (`full`) is the whole surface. Register a second
 server entry (e.g. `gunstore-pos-cpa`) with the same command plus
 `"env": {"GUNSTORE_MCP_MODE": "cpa"}` to run both side by side.
+
+### Standalone CPA install
+
+To install **only** the read-only accountant surface (no full server) — e.g. on
+a second machine or for an analyst agent:
+
+```bash
+git clone git@github.com:xuanji86/gunstore-pos-mcp.git ~/gunstore-pos-mcp
+claude mcp add gunstore-pos-cpa --scope user \
+  --env GUNSTORE_MCP_MODE=cpa \
+  --env FRAPPE_BASE_URL=https://pos.example.com \
+  --env FRAPPE_API_KEY=<key> \
+  --env FRAPPE_API_SECRET=<secret> \
+  -- uv run --directory ~/gunstore-pos-mcp gunstore-mcp
+```
+
+- **Process env beats `.env`**: the server loads `.env` with `override=False`,
+  so env vars set in the registration win. A standalone install needs no
+  `.env` file at all — and the same checkout can serve several entries with
+  different `FRAPPE_BASE_URL` / mode combinations (e.g. a dev-site instance).
+- **Verify**: after connecting, `tools/list` must show exactly **18** tools and
+  the server name `gunstore-pos-cpa`. A misspelled/unknown mode value refuses
+  to start (fail-closed) rather than silently degrading to the writable surface.
+- **Security boundary — read before handing this to a third party**: the
+  three-layer gate restricts the *MCP call layer* only. The API key/secret in
+  the registration is whatever that Frappe user can do — with a System Manager
+  key, anyone who extracts it can write via plain REST, MCP gate or not. For a
+  third-party (e.g. an outside accountant's machine), create a dedicated
+  Frappe API user with read-only roles and register with *that* key pair.
 
 ### Generic backbone
 | Tool | Purpose |

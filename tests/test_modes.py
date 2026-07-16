@@ -75,10 +75,10 @@ class RegistrationLayer(unittest.TestCase):
 		self.assertEqual(set(mcp.tools), EXPECTED_CPA_TOOLS)
 		self.assertEqual(len(mcp.tools), 18)
 
-	def test_full_mode_registers_67_tools_including_the_cpa_18(self):
+	def test_full_mode_registers_68_tools_including_the_cpa_18(self):
 		mcp = FakeMCP()
 		server.register_tools(mcp, mode="full")
-		self.assertEqual(len(mcp.tools), 67)
+		self.assertEqual(len(mcp.tools), 68)
 		self.assertTrue(EXPECTED_CPA_TOOLS <= set(mcp.tools))
 		# regression: none of the write faces leaked out of full mode
 		for name in ("frappe_run_method", "dispose_order", "receive_goods",

@@ -46,6 +46,25 @@ class RunMethodGuards(unittest.TestCase):
 		self.assertEqual(self.client.calls[-1][1],
 			"ffl_core.api.manual_order.list_pending_dispositions")
 
+	def test_always_confirm_methods_gated_by_exact_name(self):
+		# review q2 (run 2026-07-16-mcp-cpa-mode): high-consequence writes whose
+		# last path segment carries no destructive verb — the regex can't see
+		# them, so they are gated by EXACT dotted name.
+		for method in (
+			"ffl_core.api.manual_order.update_order",
+			"ffl_core.api.consignment_out.update_consignment_line_prices",
+			"ffl_core.api.consignment_out.create_consignment_out",
+			"ffl_core.api.manual_order.record_payment",
+			"ffl_core.api.consignment_orders.create_consignment_invoice_now",
+			"ffl_core.api.item_admin.add_stock",
+			"ffl_core.api.item_admin.set_stock",
+			"ffl_core.api.manual_order.set_customer_tax_exempt",
+		):
+			with self.assertRaises(WriteRefused, msg=method):
+				self.run_method(method)
+			self.run_method(method, confirm=True)
+			self.assertEqual(self.client.calls[-1][1], method)
+
 	def test_domain_destructive_verbs_gated(self):
 		for method in (
 			"ffl_core.api.manual_order.dispose_order",
