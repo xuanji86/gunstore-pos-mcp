@@ -19,10 +19,17 @@ from ..safety import (
 # gating on a module name). The second row is this domain's own high-consequence
 # verbs: dispose (bound-book disposition + stock-out), push (live Woo/FastBound/
 # ShipStation writes), charge (card terminal), consolidate (posts stock + SI).
+# The third row covers the consignment-out / onboarding lifecycle (#196–#222):
+# ship (dispose + stock-out), sold/receive (mark_sold mints the settlement
+# invoice; receive also gates create_receive's Purchase-Receipt + FastBound
+# push), return (books a real re-acquisition), settle, onboard (creates a
+# portal login + customer). Over-gating a rare read (get_receive_sources) is
+# the accepted cost — the gate fails safe.
 _DESTRUCTIVE_METHOD = re.compile(
     r"(delete|destroy|drop|truncate|wipe|reset|purge|cancel|void|refund"
     r"|force|remove|rename|bulk|import"
-    r"|dispose|push|charge|consolidate)",
+    r"|dispose|push|charge|consolidate"
+    r"|ship|settle|return|onboard|receive|sold)",
     re.I,
 )
 
