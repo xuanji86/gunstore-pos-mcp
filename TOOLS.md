@@ -91,6 +91,7 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 | **Dispose（发出）寄售单** | `ship_consignment_out` | ✅ | 逐枪登 FFL 转移 disposition + 移库 + 推 FastBound；先验全部行再动任何行，幂等。**动手前核对经销商 FFL 和序列号** |
 | 推到 ShipStation 买面单 | `push_consignment_shipment` | ✅ | 已 dispose 的单才能推；幂等、失败不留脏数据 |
 | 不走 ShipStation、手工记发货 | `mark_consignment_shipped` | ✅ | 可带 tracking_number/carrier，经销商门户会显示 |
+| **改在外寄售枪的价**（At Dealer 行的 Dealer Price/MSRP） | `update_consignment_prices` | ✅ | prices：{行名: {cost 必填>0, msrp 三态——缺键=不动、空=清掉、否则>0}}。只改本张单的行快照，不动 Serial No/Item 主档；结算与门户自动跟随。仅 At Dealer 且未出结算发票的行；整批先验后写。行名从 `consignment_queue` 拿 |
 | 看结算队列（卖掉但没收到钱的） | `consignment_dealer_orders` | — | Sold 但结算发票没出/没付清的行，失败的排最前 |
 | 结算发票失败重试 | `retry_consignment_invoice` | ✅ | 传 Consignment Out Line 名（从结算队列拿） |
 | 收回没卖掉的枪 | `return_consignment_lines` | ✅ | 逐枪登真实 re-acquisition（自动推 FastBound）+ 移库回主仓 |
@@ -153,7 +154,7 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 | 特殊订货 / 定金 | `ffl_core.api.special_order.*` |
 | 个人 trade-in 收枪 | `ffl_core.api.trade_in.create_trade_in_intake` |
 | 安全删除 Item（保留枪支审计链） | `ffl_core.api.item_admin.preview_delete` → `force_delete`（要 confirm） |
-| **编辑**一张 pending 柜台单（取消重建式，仅限未 dispose/未推单） | `ffl_core.api.manual_order.update_order` ⚠️ 裸调**不会**被要求 confirm（"update" 不在危险动词表），但内部是 cancel+rebuild 级联——慎用，动手前先复述要改什么 |
+| **编辑**一张 pending 柜台单（取消重建式，仅限未 dispose/未推单） | `ffl_core.api.manual_order.update_order`（要 confirm——已列入显式高后果名单 `_ALWAYS_CONFIRM_METHODS`，"update" 虽不在危险动词表，裸调也会被要求确认）内部是 cancel+rebuild 级联——慎用，动手前先复述要改什么 |
 | 查/设客户免税状态 | `ffl_core.api.manual_order.get_customer_tax_status` / `set_customer_tax_exempt` |
 | Woo 部分退款对账（Woo 退了款、POS 侧对齐） | `ffl_woo_sync.woocommerce.refunds.reconcile_web_order_refund`（要 confirm） |
 | 清理指向已删 Woo 商品的 dangling ID | `ffl_woo_sync.woocommerce.dangling.woo_audit_dangling_ids`（`fix=0` 干跑只报告） |
@@ -163,7 +164,7 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 
 ## 10. CPA 模式（只读会计面）+ 报表工具包
 
-**模式开关**：启动环境变量 `GUNSTORE_MCP_MODE=cpa`（默认 `full` = 全部 67 工具，行为与以前完全一致；未知值直接拒绝启动，不会静默降级成可写）。cpa 模式给会计/CPA 用：**写面在工具列表里物理不存在**，不是"存在但会拒绝"。三层防御，缺一层其余仍兜底：
+**模式开关**：启动环境变量 `GUNSTORE_MCP_MODE=cpa`（默认 `full` = 全部 68 工具，行为与以前完全一致；未知值直接拒绝启动，不会静默降级成可写）。cpa 模式给会计/CPA 用：**写面在工具列表里物理不存在**，不是"存在但会拒绝"。三层防御，缺一层其余仍兜底：
 
 1. **注册层**：tools/list 恰好 = 下面 18 个名字（集合相等，测试钉死）；
 2. **客户端层**：一切写方法 + 未逐一列名的点路径方法（`frappe_run_method` 整个不注册）→ `CpaModeRefused`；只读点路径 allowlist 逐一列名，禁通配；
@@ -213,5 +214,5 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 
 ---
 
-*工具总数 67（10 个通用 + 52 个专用 + 5 个报表）；`GUNSTORE_MCP_MODE=cpa` 只读模式恰注册其中 18 个。对应版本 v0.4.0；工具行为以 README.md
+*工具总数 68（10 个通用 + 53 个专用 + 5 个报表）；`GUNSTORE_MCP_MODE=cpa` 只读模式恰注册其中 18 个。对应版本 v0.4.1；工具行为以 README.md
 和源码 `gunstore_mcp/tools/` 为准。*

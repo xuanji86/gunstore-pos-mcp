@@ -1,6 +1,6 @@
 # gunstore-pos-mcp — POS 的 MCP 服务器(Python/uv)
 
-gunstore-pos 平台的 MCP server 源码仓(67 工具 = 10 个通用 Frappe CRUD + 52 个业务工具 + 5 个 CPA 报表工具:寄售出库/订单履约/4473/RSR/FastBound/Woo/库存/FFL/财税报表)。工具清单与语义见 `TOOLS.md`。gunstore-pos 仓的 `.mcp.json` 以 `uv run --directory <本仓> gunstore-mcp` 方式引用。
+gunstore-pos 平台的 MCP server 源码仓(68 工具 = 10 个通用 Frappe CRUD + 53 个业务工具 + 5 个 CPA 报表工具:寄售出库/订单履约/4473/RSR/FastBound/Woo/库存/FFL/财税报表)。工具清单与语义见 `TOOLS.md`。gunstore-pos 仓的 `.mcp.json` 以 `uv run --directory <本仓> gunstore-mcp` 方式引用。
 
 **模式**:`GUNSTORE_MCP_MODE=cpa` 启动只读会计面(恰 18 工具,写面物理不注册 + client 层方法 allowlist + Settings 读 blocklist 三层防御,见 `gunstore_mcp/modes.py`);默认 `full` 全量。未知模式值拒绝启动(fail-closed)。
 
