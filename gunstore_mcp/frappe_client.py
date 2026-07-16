@@ -17,6 +17,13 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from .config import get_config
+from .modes import (
+    CPA_METHOD_ALLOWLIST,
+    CPA_MODE,
+    CPA_SETTINGS_READ_BLOCKLIST,
+    CpaModeRefused,
+    get_mode,
+)
 
 
 class FrappeAPIError(RuntimeError):
@@ -60,12 +67,36 @@ class FrappeClient:
         cfg = get_config()
         self.base_url = cfg.base_url
         self.timeout = cfg.timeout
+        self.mode = get_mode()
         self.session = _build_session()
         self.session.headers.update({
             "Authorization": f"token {cfg.api_key}:{cfg.api_secret}",
             "Accept": "application/json",
             "Content-Type": "application/json",
         })
+
+    # ------------------------------------------- cpa read-only gate (layer 2/3)
+    # The registration layer (modes.FilteredMCP) already removes the write
+    # tools from tools/list; these guards make the CLIENT itself refuse, so a
+    # future tool wired straight to the client cannot bypass the mode.
+    def _refuse_cpa(self, what: str) -> None:
+        raise CpaModeRefused(
+            f"cpa mode is read-only: {what} is not available. "
+            "Run the full-mode server for writes."
+        )
+
+    def _cpa_check_write(self, what: str) -> None:
+        if self.mode == CPA_MODE:
+            self._refuse_cpa(what)
+
+    def _cpa_check_method(self, method: str) -> None:
+        # Exact-name allowlist — no prefix wildcards, no HTTP-verb heuristics.
+        if self.mode == CPA_MODE and method not in CPA_METHOD_ALLOWLIST:
+            self._refuse_cpa(f"method '{method}' (not on the read-only allowlist)")
+
+    def _cpa_check_read(self, doctype: str) -> None:
+        if self.mode == CPA_MODE and doctype in CPA_SETTINGS_READ_BLOCKLIST:
+            self._refuse_cpa(f"reading '{doctype}' (integration settings)")
 
     # -------------------------------------------------- HTTP plumbing
     def _request(self, method: str, path: str, *, params: dict | None = None,
@@ -122,6 +153,7 @@ class FrappeClient:
     def list_documents(self, doctype: str, *, fields: list | None = None,
                        filters: Any = None, limit: int = 20, start: int = 0,
                        order_by: str | None = None) -> Any:
+        self._cpa_check_read(doctype)
         params: dict[str, Any] = {"limit_page_length": limit, "limit_start": start}
         if fields:
             params["fields"] = json.dumps(fields)
@@ -132,22 +164,28 @@ class FrappeClient:
         return self._request("GET", self._res(doctype), params=params)
 
     def get_document(self, doctype: str, name: str) -> Any:
+        self._cpa_check_read(doctype)
         return self._request("GET", self._res(doctype, name))
 
     def create_document(self, doctype: str, values: dict) -> Any:
+        self._cpa_check_write("create_document")
         return self._request("POST", self._res(doctype), json_body=values)
 
     def update_document(self, doctype: str, name: str, values: dict) -> Any:
+        self._cpa_check_write("update_document")
         return self._request("PUT", self._res(doctype, name), json_body=values)
 
     def delete_document(self, doctype: str, name: str) -> Any:
+        self._cpa_check_write("delete_document")
         return self._request("DELETE", self._res(doctype, name))
 
     # -------------------------------------------------- method / report ops
     def call_method(self, method: str, kwargs: dict | None = None) -> Any:
+        self._cpa_check_method(method)
         return self._request("POST", f"/api/method/{method}", json_body=kwargs or {})
 
     def submit_document(self, doctype: str, name: str) -> Any:
+        self._cpa_check_write("submit_document")
         doc = self.get_document(doctype, name)
         if isinstance(doc, dict):
             # Frappe masks Password fields on GET (an all-"*" string). Never echo
@@ -158,6 +196,7 @@ class FrappeClient:
         return self._request("POST", "/api/method/frappe.client.submit", json_body={"doc": doc})
 
     def cancel_document(self, doctype: str, name: str) -> Any:
+        self._cpa_check_write("cancel_document")
         return self._request("POST", "/api/method/frappe.client.cancel",
                              json_body={"doctype": doctype, "name": name})
 
@@ -166,6 +205,7 @@ class FrappeClient:
                     is_private: bool = True, filename: str | None = None) -> Any:
         """Multipart upload to Frappe's /api/method/upload_file — the one call
         that can't go through _request (JSON-only). Returns the created File doc."""
+        self._cpa_check_write("upload_file")
         url = urljoin(self.base_url + "/", "api/method/upload_file")
         data: dict[str, str] = {"is_private": "1" if is_private else "0"}
         if doctype:
@@ -192,6 +232,9 @@ class FrappeClient:
         return body
 
     def run_report(self, report_name: str, filters: dict | None = None) -> Any:
+        # Same chokepoint semantics as call_method — query_report.run is ON the
+        # cpa allowlist, so this passes in both modes; listed for structure.
+        self._cpa_check_method("frappe.desk.query_report.run")
         params: dict[str, Any] = {"report_name": report_name}
         if filters:
             params["filters"] = json.dumps(filters)

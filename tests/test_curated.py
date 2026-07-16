@@ -568,8 +568,8 @@ class CuratedTools(unittest.TestCase):
 			self.assertIn(name, self.tools)
 
 	def test_curated_tool_count_pinned(self):
-		# 52 curated + 10 generic = 62 total. TOOLS.md / CLAUDE.md / README.md
-		# quote this number — if this assertion moves, move all three docs too.
+		# 52 curated + 10 generic + 5 reports = 67 total. TOOLS.md / CLAUDE.md /
+		# README.md quote 67 — if this assertion moves, move all three docs too.
 		self.assertEqual(len(self.tools), 52)
 
 
