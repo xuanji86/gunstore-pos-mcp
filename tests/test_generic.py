@@ -102,6 +102,13 @@ class RunMethodGuards(unittest.TestCase):
 			self.run_method("frappe.client.set_value", confirm=True)
 		self.assertEqual(self.client.calls, [])
 
+	def test_generic_tool_count_pinned(self):
+		# 10 generic + 52 curated (test_curated_tool_count_pinned) = 62 total.
+		# TOOLS.md / CLAUDE.md / README.md quote 62 — move all three if this moves.
+		mcp = FakeMCP()
+		generic.register(mcp)
+		self.assertEqual(len(mcp.tools), 10)
+
 
 if __name__ == "__main__":
 	unittest.main()

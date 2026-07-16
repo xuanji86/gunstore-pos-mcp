@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..frappe_client import get_client
-from ..safety import require_confirm, strip_passwords, stripped_note
+from ..safety import require_confirm, require_reason, strip_passwords, stripped_note
 
 _SETTINGS = {
     "ffl": "FFL Settings",
@@ -606,8 +606,7 @@ def register(mcp: Any) -> None:
         DRAFT document (never-shipped staging record; books/moves nothing).
         reason is required and recorded. confirm=true."""
         require_confirm(f"cancel_consignment {consignment_out}", confirm)
-        if not (reason or "").strip():
-            raise ValueError("reason is required — say why this is being cancelled.")
+        reason = require_reason(f"cancel_consignment {consignment_out}", reason)
         if line:
             return get_client().call_method(
                 "ffl_core.api.consignment_out.cancel_consignment_line",
@@ -633,8 +632,7 @@ def register(mcp: Any) -> None:
         (refund_mode/refund_reference when a refund is due). reason is required
         and recorded. confirm=true."""
         require_confirm(f"cancel_order {sales_invoice}", confirm)
-        if not (reason or "").strip():
-            raise ValueError("reason is required — say why this order is being cancelled.")
+        reason = require_reason(f"cancel_order {sales_invoice}", reason)
         return get_client().call_method(
             "ffl_core.api.manual_order.cancel_order",
             {"sales_invoice": sales_invoice, "reason": reason,

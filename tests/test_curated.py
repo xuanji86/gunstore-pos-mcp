@@ -459,6 +459,7 @@ class CuratedTools(unittest.TestCase):
 	def test_push_consignment_shipment_requires_confirm(self):
 		with self.assertRaises(WriteRefused):
 			self.tools["push_consignment_shipment"]("CONO-0001")
+		self.assertEqual(self.client.calls, [])
 		self.tools["push_consignment_shipment"]("CONO-0001", confirm=True)
 		self.assertEqual(self._last(), (
 			"call_method",
@@ -469,6 +470,7 @@ class CuratedTools(unittest.TestCase):
 	def test_mark_consignment_shipped_requires_confirm(self):
 		with self.assertRaises(WriteRefused):
 			self.tools["mark_consignment_shipped"]("CONO-0001")
+		self.assertEqual(self.client.calls, [])
 		self.tools["mark_consignment_shipped"]("CONO-0001",
 			tracking_number="1Z999", carrier="UPS", confirm=True)
 		self.assertEqual(self._last(), (
@@ -481,6 +483,7 @@ class CuratedTools(unittest.TestCase):
 	def test_retry_consignment_invoice_requires_confirm(self):
 		with self.assertRaises(WriteRefused):
 			self.tools["retry_consignment_invoice"]("LINE-1")
+		self.assertEqual(self.client.calls, [])
 		self.tools["retry_consignment_invoice"]("LINE-1", confirm=True)
 		self.assertEqual(self._last(), (
 			"call_method",
@@ -491,6 +494,7 @@ class CuratedTools(unittest.TestCase):
 	def test_return_consignment_lines_requires_confirm(self):
 		with self.assertRaises(WriteRefused):
 			self.tools["return_consignment_lines"]("CONO-0001", ["L1", "L2"])
+		self.assertEqual(self.client.calls, [])
 		self.tools["return_consignment_lines"]("CONO-0001", ["L1", "L2"],
 			to_warehouse="Main - OSA", confirm=True)
 		self.assertEqual(self._last(), (

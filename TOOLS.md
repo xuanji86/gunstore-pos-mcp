@@ -31,7 +31,7 @@
 | 看寄售在途/结算队列 | `consignment_queue` / `consignment_dealer_orders` | 寄售全套见第 5 节 |
 | 搜 RSR 批发目录（不是本店库存） | `rsr_catalog_search` | 按关键词/UPC/RSR 编号/厂商编号搜 |
 | 跑任意报表 | `frappe_run_report` | 报表名：`Sales Report`（营收+毛利；filters 传 `view`="Order"/"Order Detail"/"Product" 切三种视图，默认 Order，返回含 report_summary 卡片）、`Pending 4473 Orders`（卡在 4473 的单）、`Open Special Orders`（特殊订货看板）、`Pending Transfer Pickups`（待取的转入枪） |
-| 查任何记录 | `frappe_list_documents` / `frappe_get_document` | 万能查询，见第 8 节 |
+| 查任何记录 | `frappe_list_documents` / `frappe_get_document` | 万能查询，见第 9 节 |
 
 ## 2. 商品上架 / 下架（WooCommerce，主店 + 经销商门户）
 
@@ -47,7 +47,7 @@
 
 以上全部支持 `site="dealer"` 推到经销商门户。
 
-**传照片**：单张可用 `upload_attachment`（见第 7 节）；**批量传图+描述+建相册请走
+**传照片**：单张可用 `upload_attachment`（见第 8 节）；**批量传图+描述+建相册请走
 firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原图太大会把 Woo
 推送搞超时），MCP 不做 resize。
 
@@ -152,7 +152,7 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 | 特殊订货 / 定金 | `ffl_core.api.special_order.*` |
 | 个人 trade-in 收枪 | `ffl_core.api.trade_in.create_trade_in_intake` |
 | 安全删除 Item（保留枪支审计链） | `ffl_core.api.item_admin.preview_delete` → `force_delete`（要 confirm） |
-| **编辑**一张 pending 柜台单（取消重建式，仅限未 dispose/未推单） | `ffl_core.api.manual_order.update_order` |
+| **编辑**一张 pending 柜台单（取消重建式，仅限未 dispose/未推单） | `ffl_core.api.manual_order.update_order` ⚠️ 裸调**不会**被要求 confirm（"update" 不在危险动词表），但内部是 cancel+rebuild 级联——慎用，动手前先复述要改什么 |
 | 查/设客户免税状态 | `ffl_core.api.manual_order.get_customer_tax_status` / `set_customer_tax_exempt` |
 | Woo 部分退款对账（Woo 退了款、POS 侧对齐） | `ffl_woo_sync.woocommerce.refunds.reconcile_web_order_refund`（要 confirm） |
 | 清理指向已删 Woo 商品的 dangling ID | `ffl_woo_sync.woocommerce.dangling.woo_audit_dangling_ids`（`fix=0` 干跑只报告） |
