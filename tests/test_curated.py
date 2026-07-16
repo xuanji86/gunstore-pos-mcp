@@ -544,6 +544,20 @@ class CuratedTools(unittest.TestCase):
 			 "refund_mode": "Cash", "refund_reference": "R1"},
 		))
 
+	def test_update_consignment_prices_requires_confirm(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["update_consignment_prices"](
+				"CONO-0007", {"LINE-1": {"cost": 500}})
+		self.assertEqual(self.client.calls, [])
+		self.tools["update_consignment_prices"](
+			"CONO-0007", {"LINE-1": {"cost": 500, "msrp": 650}}, confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method",
+			"ffl_core.api.consignment_out.update_consignment_line_prices",
+			{"consignment_out": "CONO-0007",
+			 "prices": {"LINE-1": {"cost": 500, "msrp": 650}}},
+		))
+
 	# ------------------------------------------------------------- coverage
 
 	def test_all_new_tools_registered(self):
@@ -564,13 +578,15 @@ class CuratedTools(unittest.TestCase):
 			"ship_consignment_out", "push_consignment_shipment",
 			"mark_consignment_shipped", "retry_consignment_invoice",
 			"return_consignment_lines", "cancel_consignment", "cancel_order",
+			# PR #224 increment: At-dealer price snapshot edit
+			"update_consignment_prices",
 		):
 			self.assertIn(name, self.tools)
 
 	def test_curated_tool_count_pinned(self):
-		# 52 curated + 10 generic + 5 reports = 67 total. TOOLS.md / CLAUDE.md /
-		# README.md quote 67 — if this assertion moves, move all three docs too.
-		self.assertEqual(len(self.tools), 52)
+		# 53 curated + 10 generic + 5 reports = 68 total. TOOLS.md / CLAUDE.md /
+		# README.md quote 68 — if this assertion moves, move all three docs too.
+		self.assertEqual(len(self.tools), 53)
 
 
 if __name__ == "__main__":

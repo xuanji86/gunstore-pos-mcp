@@ -33,6 +33,20 @@ _DESTRUCTIVE_METHOD = re.compile(
     re.I,
 )
 
+# High-consequence whitelisted writes whose LAST path segment carries no
+# destructive verb, so the regex above cannot see them (review q2, run
+# 2026-07-16-mcp-cpa-mode). Gated by EXACT dotted name — list names one by
+# one, no prefixes or wildcards. "update"/"create" are deliberately not regex
+# verbs (they would over-gate half of Frappe's read-adjacent surface):
+# update_order and update_consignment_line_prices rewrite money fields on
+# live orders; create_consignment_out with dispose_now=1 books dispositions
+# and moves stock, well beyond what "create" implies.
+_ALWAYS_CONFIRM_METHODS = {
+    "ffl_core.api.manual_order.update_order",
+    "ffl_core.api.consignment_out.update_consignment_line_prices",
+    "ffl_core.api.consignment_out.create_consignment_out",
+}
+
 # Frappe globally whitelists these generic mutators at /api/method — reaching
 # them via frappe_run_method would bypass the structured CRUD guards (denylist,
 # password-strip, confirm). Refuse them and point at the guarded tools.
@@ -144,7 +158,8 @@ def register(mcp: Any) -> None:
         'ffl_integrations.rsr.tasks.sync_catalog_now'. Generic Frappe mutators
         (frappe.client.set_value/insert/save/delete/bulk_update/...) are refused —
         use the structured frappe_*_document tools, which enforce the guards.
-        Methods whose name implies a destructive action require confirm=true."""
+        Methods whose name implies a destructive action — or that are on the
+        explicit high-consequence list — require confirm=true."""
         if method in _BLOCKED_GENERIC_METHODS:
             raise WriteRefused(
                 f"Refused: '{method}' is a generic Frappe mutator that would bypass the "
@@ -152,7 +167,8 @@ def register(mcp: Any) -> None:
                 "tools instead: frappe_create_document / frappe_update_document / "
                 "frappe_delete_document / frappe_submit_document / frappe_cancel_document."
             )
-        if _DESTRUCTIVE_METHOD.search(method.rsplit(".", 1)[-1]):
+        if (method in _ALWAYS_CONFIRM_METHODS
+                or _DESTRUCTIVE_METHOD.search(method.rsplit(".", 1)[-1])):
             require_confirm(f"run_method {method}", confirm)
         return get_client().call_method(method, kwargs)
 
