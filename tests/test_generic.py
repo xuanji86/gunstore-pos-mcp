@@ -103,8 +103,9 @@ class RunMethodGuards(unittest.TestCase):
 		self.assertEqual(self.client.calls, [])
 
 	def test_generic_tool_count_pinned(self):
-		# 10 generic + 52 curated (test_curated_tool_count_pinned) = 62 total.
-		# TOOLS.md / CLAUDE.md / README.md quote 62 — move all three if this moves.
+		# 10 generic + 52 curated + 5 reports = 67 total (full mode; cpa = 18,
+		# pinned by set equality in test_modes). TOOLS.md / CLAUDE.md / README.md
+		# quote 67 — move all three if this moves.
 		mcp = FakeMCP()
 		generic.register(mcp)
 		self.assertEqual(len(mcp.tools), 10)
