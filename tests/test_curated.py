@@ -75,12 +75,20 @@ class CuratedTools(unittest.TestCase):
 			{"item_codes": ["A", "B"]},
 		))
 
-	def test_available_serials(self):
+	def test_available_serials_excludes_unavailable_by_default(self):
+		# Mirrors the server default (firearm.py available_serials_with_prices
+		# exclude_unavailable=True): held / consigned-out guns are dropped.
 		self.tools["available_serials"]("A")
 		self.assertEqual(self._last(), (
 			"call_method", "ffl_core.firearm.available_serials_with_prices",
-			{"item_codes": "A"},
+			{"item_codes": "A", "exclude_unavailable": 1},
 		))
+
+	def test_available_serials_can_include_unavailable(self):
+		# Inventory-audit callers need the RAW list (consigned/held included).
+		self.tools["available_serials"]("A", exclude_unavailable=False)
+		self.assertEqual(self._last()[2],
+			{"item_codes": "A", "exclude_unavailable": 0})
 
 	def test_rsr_catalog_search(self):
 		self.tools["rsr_catalog_search"]("glock", 5)
@@ -280,6 +288,12 @@ class CuratedTools(unittest.TestCase):
 			"call_method", "ffl_core.api.manual_order.list_pending_dispositions", {},
 		))
 
+	def test_pending_orders_docstring_names_consignment_queue(self):
+		# #213 split the consignment fulfillment into its own queue; the server
+		# list explicitly EXCLUDES consignment SIs. The docstring must route the
+		# operator to consignment_queue or they will think consignments vanished.
+		self.assertIn("consignment_queue", self.tools["pending_orders"].__doc__)
+
 	def test_pending_web_orders_read_only(self):
 		self.tools["pending_web_orders"]()
 		self.assertEqual(self._last(), (
@@ -385,6 +399,151 @@ class CuratedTools(unittest.TestCase):
 		self.assertEqual(self._last(), (
 			"upload_file", "/tmp/x.jpg", "Serial No", "SN1", None, False, None))
 
+	# ------------------------------------------ J: consignment out (寄售) reads
+
+	def test_consignment_queue_read_only(self):
+		self.tools["consignment_queue"]()
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_core.api.consignment_out.list_consignment_queue",
+			{"include_closed": 0},
+		))
+		self.tools["consignment_queue"](include_closed=True)
+		self.assertEqual(self._last()[2], {"include_closed": 1})
+
+	def test_consignment_dealers_read_only(self):
+		self.tools["consignment_dealers"]()
+		self.assertEqual(self._last(), (
+			"call_method",
+			"ffl_core.api.consignment_out.list_consignment_dealers", {},
+		))
+
+	def test_consignment_serials_read_only(self):
+		self.tools["consignment_serials"](item_code="GLK19", search="G19", limit=10)
+		self.assertEqual(self._last(), (
+			"call_method",
+			"ffl_core.api.consignment_out.available_serials_for_consignment",
+			{"item_code": "GLK19", "search": "G19", "limit": 10},
+		))
+
+	def test_consignment_dealer_orders_read_only(self):
+		self.tools["consignment_dealer_orders"]()
+		self.assertEqual(self._last(), (
+			"call_method",
+			"ffl_core.api.consignment_orders.list_dealer_orders", {},
+		))
+
+	# ----------------------------------------- K: consignment out (寄售) writes
+
+	def test_create_consignment_out_requires_confirm(self):
+		payload = {"dealer": "AAA", "lines": [
+			{"item_code": "I", "serial": "SN1", "cost": 400, "msrp": 599}]}
+		with self.assertRaises(WriteRefused):
+			self.tools["create_consignment_out"](payload)
+		self.assertEqual(self.client.calls, [])
+		self.tools["create_consignment_out"](payload, confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_core.api.consignment_out.create_consignment_out",
+			{"payload": payload},
+		))
+
+	def test_ship_consignment_out_requires_confirm(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["ship_consignment_out"]("CONO-0001")
+		self.assertEqual(self.client.calls, [])
+		self.tools["ship_consignment_out"]("CONO-0001", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_core.api.consignment_out.ship_consignment_out",
+			{"consignment_out": "CONO-0001"},
+		))
+
+	def test_push_consignment_shipment_requires_confirm(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["push_consignment_shipment"]("CONO-0001")
+		self.assertEqual(self.client.calls, [])
+		self.tools["push_consignment_shipment"]("CONO-0001", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method",
+			"ffl_integrations.shipstation.api.push_consignment_shipment",
+			{"consignment_out": "CONO-0001"},
+		))
+
+	def test_mark_consignment_shipped_requires_confirm(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["mark_consignment_shipped"]("CONO-0001")
+		self.assertEqual(self.client.calls, [])
+		self.tools["mark_consignment_shipped"]("CONO-0001",
+			tracking_number="1Z999", carrier="UPS", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method",
+			"ffl_core.api.consignment_out.mark_consignment_shipped_manually",
+			{"consignment_out": "CONO-0001", "tracking_number": "1Z999",
+			 "carrier": "UPS"},
+		))
+
+	def test_retry_consignment_invoice_requires_confirm(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["retry_consignment_invoice"]("LINE-1")
+		self.assertEqual(self.client.calls, [])
+		self.tools["retry_consignment_invoice"]("LINE-1", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method",
+			"ffl_core.api.consignment_orders.create_consignment_invoice_now",
+			{"line": "LINE-1"},
+		))
+
+	def test_return_consignment_lines_requires_confirm(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["return_consignment_lines"]("CONO-0001", ["L1", "L2"])
+		self.assertEqual(self.client.calls, [])
+		self.tools["return_consignment_lines"]("CONO-0001", ["L1", "L2"],
+			to_warehouse="Main - OSA", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method",
+			"ffl_core.api.consignment_out.return_consignment_lines",
+			{"consignment_out": "CONO-0001", "lines": ["L1", "L2"],
+			 "to_warehouse": "Main - OSA"},
+		))
+
+	def test_cancel_consignment_whole_doc(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["cancel_consignment"]("CONO-0001", "built by mistake")
+		self.assertEqual(self.client.calls, [])
+		self.tools["cancel_consignment"]("CONO-0001", "built by mistake",
+			confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_core.api.consignment_out.cancel_consignment_out",
+			{"consignment_out": "CONO-0001", "reason": "built by mistake"},
+		))
+
+	def test_cancel_consignment_single_line(self):
+		self.tools["cancel_consignment"]("CONO-0001", "wrong gun", line="L1",
+			confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_core.api.consignment_out.cancel_consignment_line",
+			{"consignment_out": "CONO-0001", "line": "L1", "reason": "wrong gun"},
+		))
+
+	def test_cancel_consignment_blank_reason_rejected(self):
+		with self.assertRaises(ValueError):
+			self.tools["cancel_consignment"]("CONO-0001", "  ", confirm=True)
+		self.assertEqual(self.client.calls, [])
+
+	# --------------------------------------------------- L: counter order cancel
+
+	def test_cancel_order_requires_confirm_and_reason(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["cancel_order"]("SI-1", "customer backed out")
+		with self.assertRaises(ValueError):
+			self.tools["cancel_order"]("SI-1", "", confirm=True)
+		self.assertEqual(self.client.calls, [])
+		self.tools["cancel_order"]("SI-1", "customer backed out",
+			refund_mode="Cash", refund_reference="R1", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_core.api.manual_order.cancel_order",
+			{"sales_invoice": "SI-1", "reason": "customer backed out",
+			 "refund_mode": "Cash", "refund_reference": "R1"},
+		))
+
 	# ------------------------------------------------------------- coverage
 
 	def test_all_new_tools_registered(self):
@@ -399,8 +558,19 @@ class CuratedTools(unittest.TestCase):
 			"push_shipment", "mark_shipped_manually", "shipstation_test_connection",
 			"start_4473", "manager_override_4473", "start_transfer_4473",
 			"upload_attachment",
+			# consignment out lifecycle + counter-order cancel (P1 补齐)
+			"consignment_queue", "consignment_dealers", "consignment_serials",
+			"consignment_dealer_orders", "create_consignment_out",
+			"ship_consignment_out", "push_consignment_shipment",
+			"mark_consignment_shipped", "retry_consignment_invoice",
+			"return_consignment_lines", "cancel_consignment", "cancel_order",
 		):
 			self.assertIn(name, self.tools)
+
+	def test_curated_tool_count_pinned(self):
+		# 52 curated + 10 generic = 62 total. TOOLS.md / CLAUDE.md / README.md
+		# quote this number — if this assertion moves, move all three docs too.
+		self.assertEqual(len(self.tools), 52)
 
 
 if __name__ == "__main__":

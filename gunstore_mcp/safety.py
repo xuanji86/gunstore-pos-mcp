@@ -108,6 +108,21 @@ def require_confirm(action: str, confirm: bool) -> None:
         )
 
 
+def require_reason(action: str, reason: str | None) -> str:
+    """Validate the mandatory reason on cancel-class ops; returns it stripped.
+
+    The server enforces non-empty reasons independently — this is the UX
+    front-gate so the refusal happens before any network call, and it lives
+    here so curated tools can't diverge on the message."""
+    reason = (reason or "").strip()
+    if not reason:
+        raise ValueError(
+            f"reason is required for '{action}' — say why (it is recorded "
+            "in the audit trail)."
+        )
+    return reason
+
+
 def check_write_allowed(doctype: str) -> None:
     if doctype in get_config().write_denylist:
         raise WriteRefused(

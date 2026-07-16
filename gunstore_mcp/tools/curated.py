@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..frappe_client import get_client
-from ..safety import require_confirm, strip_passwords, stripped_note
+from ..safety import require_confirm, require_reason, strip_passwords, stripped_note
 
 _SETTINGS = {
     "ffl": "FFL Settings",
@@ -172,12 +172,19 @@ def register(mcp: Any) -> None:
         )
 
     @mcp.tool()
-    def available_serials(item_codes: list[str] | str) -> Any:
+    def available_serials(
+        item_codes: list[str] | str, exclude_unavailable: bool = True
+    ) -> Any:
         """In-stock Serial Nos per firearm item, each with its per-gun sell price:
         {item_code: [{serial, sell_price, ...}]}. Use for 'which units do we have
-        of this model + at what price'. Read-only."""
+        of this model + at what price'. By default mirrors the POS picker: held /
+        consigned-out / consignment-warehouse guns are EXCLUDED (they're not
+        sellable over the counter). Pass exclude_unavailable=false for the RAW
+        list — inventory audits that must also see consigned/held guns. Read-only."""
         return get_client().call_method(
-            "ffl_core.firearm.available_serials_with_prices", {"item_codes": item_codes}
+            "ffl_core.firearm.available_serials_with_prices",
+            {"item_codes": item_codes,
+             "exclude_unavailable": 1 if exclude_unavailable else 0},
         )
 
     @mcp.tool()
@@ -320,7 +327,10 @@ def register(mcp: Any) -> None:
     def pending_orders() -> Any:
         """The Pending Order queue, counter + dealer rows: submitted firearm
         shipments that still need disposing, payment, or a ShipStation push.
-        Web-shop rows come from pending_web_orders. Read-only."""
+        Web-shop rows come from pending_web_orders. Consignment fulfillment is
+        NOT here — outbound consignments live in their own queue (see
+        consignment_queue); this list explicitly excludes consignment invoices.
+        Read-only."""
         return get_client().call_method(
             "ffl_core.api.manual_order.list_pending_dispositions"
         )
@@ -448,7 +458,188 @@ def register(mcp: Any) -> None:
              "invoice_name": invoice_name},
         )
 
-    # ---- G. file upload ----------------------------------------------------------
+    # ---- G. consignment out (寄售) — the At Dealer queue's full lifecycle -------
+
+    @mcp.tool()
+    def consignment_queue(include_closed: bool = False) -> Any:
+        """The outbound-consignment "At Dealer" queue — every unfinished
+        Consignment Out (Draft / Shipped) as one card: dealer + shippability,
+        ShipStation state, tracking, line pills, and the action gating the
+        Dispose/Ship buttons read. An INDEPENDENT queue from pending_orders
+        (which excludes consignment invoices). include_closed=true also returns
+        Closed/Cancelled history. Read-only."""
+        return get_client().call_method(
+            "ffl_core.api.consignment_out.list_consignment_queue",
+            {"include_closed": 1 if include_closed else 0},
+        )
+
+    @mcp.tool()
+    def consignment_dealers() -> Any:
+        """Every FFL-dealer Customer with its consignment shippability: FFL
+        number, eZ-Check status, expiry, plus shippable/block_reason (the same
+        gate ship_consignment_out enforces). Use before building a consignment.
+        Read-only."""
+        return get_client().call_method(
+            "ffl_core.api.consignment_out.list_consignment_dealers"
+        )
+
+    @mcp.tool()
+    def consignment_serials(
+        item_code: str | None = None, search: str | None = None, limit: int = 50
+    ) -> Any:
+        """In-stock (Active) serials pickable for an outbound consignment,
+        annotated with settlement/reference prices (cost = dealer price,
+        msrp = retail) and — for blocked guns — why they can't be picked
+        (blocked rows are returned greyed, not hidden). Filter by item_code
+        and/or a search string. Read-only."""
+        return get_client().call_method(
+            "ffl_core.api.consignment_out.available_serials_for_consignment",
+            {"item_code": item_code, "search": search, "limit": limit},
+        )
+
+    @mcp.tool()
+    def consignment_dealer_orders() -> Any:
+        """The post-sale consignment settlement queue: Sold lines whose
+        settlement invoice isn't booked yet OR whose invoice isn't paid off.
+        Failed rows sort first. Retry a failed settlement invoice with
+        retry_consignment_invoice. Read-only."""
+        return get_client().call_method(
+            "ffl_core.api.consignment_orders.list_dealer_orders"
+        )
+
+    @mcp.tool()
+    def create_consignment_out(payload: dict, confirm: bool = False) -> Any:
+        """Build an outbound consignment to an FFL dealer. payload: {dealer,
+        company?, notes?, dispose_now?, lines: [{item_code, serial, cost, msrp}]}.
+        dispose_now=0 (default) saves a Draft (guns held, Woo delisted, dispose
+        later from the queue); dispose_now=1 also disposes + best-effort
+        ShipStation push immediately — if a gate blocks (expired dealer FFL) the
+        build still succeeds as Draft with degraded=1. Find candidates with
+        consignment_dealers / consignment_serials. Consequential — confirm=true."""
+        require_confirm("create_consignment_out", confirm)
+        return get_client().call_method(
+            "ffl_core.api.consignment_out.create_consignment_out",
+            {"payload": payload},
+        )
+
+    @mcp.tool()
+    def ship_consignment_out(consignment_out: str, confirm: bool = False) -> Any:
+        """Dispose (ship) every Draft line of a Consignment Out: books the
+        FFL transfer disposition per gun, moves stock to the consignment
+        warehouse, pushes FastBound. All lines are validated before any is
+        mutated; re-running ships 0 (idempotent). Server blocks on an invalid
+        dealer FFL. VERIFY the dealer + serials first. confirm=true."""
+        require_confirm(f"ship_consignment_out {consignment_out}", confirm)
+        return get_client().call_method(
+            "ffl_core.api.consignment_out.ship_consignment_out",
+            {"consignment_out": consignment_out},
+        )
+
+    @mcp.tool()
+    def push_consignment_shipment(consignment_out: str, confirm: bool = False) -> Any:
+        """Push a DISPOSED Consignment Out to ShipStation so staff can buy the
+        outbound label — the At Dealer queue's Ship action. Synchronous,
+        idempotent, persists nothing on API failure (safe to retry). Independent
+        of the Dispose step. confirm=true."""
+        require_confirm(f"push_consignment_shipment {consignment_out}", confirm)
+        return get_client().call_method(
+            "ffl_integrations.shipstation.api.push_consignment_shipment",
+            {"consignment_out": consignment_out},
+        )
+
+    @mcp.tool()
+    def mark_consignment_shipped(
+        consignment_out: str, tracking_number: str | None = None,
+        carrier: str | None = None, confirm: bool = False,
+    ) -> Any:
+        """Clear a DISPOSED consignment's Ship step without a ShipStation push
+        (label bought elsewhere / integration off / dealer FFL expired after
+        dispose) — the consignment twin of mark_shipped_manually. Optional
+        tracking_number / carrier hand-record the label so the dealer portal
+        shows it. confirm=true."""
+        require_confirm(f"mark_consignment_shipped {consignment_out}", confirm)
+        return get_client().call_method(
+            "ffl_core.api.consignment_out.mark_consignment_shipped_manually",
+            {"consignment_out": consignment_out,
+             "tracking_number": tracking_number, "carrier": carrier},
+        )
+
+    @mcp.tool()
+    def retry_consignment_invoice(line: str, confirm: bool = False) -> Any:
+        """Retry the settlement Sales Invoice for a Sold consignment line whose
+        automatic booking failed (error log / total mismatch / dealer FFL
+        expired at submit) — the Dealer Orders queue's Retry Invoice action.
+        line = the Consignment Out Line name (see consignment_dealer_orders).
+        To UNDO a booked settlement, cancel that settlement Sales Invoice
+        instead (frappe_cancel_document) — the cancel hook reopens the parent.
+        confirm=true."""
+        require_confirm(f"retry_consignment_invoice {line}", confirm)
+        return get_client().call_method(
+            "ffl_core.api.consignment_orders.create_consignment_invoice_now",
+            {"line": line},
+        )
+
+    @mcp.tool()
+    def return_consignment_lines(
+        consignment_out: str, lines: list[str],
+        to_warehouse: str | None = None, confirm: bool = False,
+    ) -> Any:
+        """Take unsold consigned guns BACK from the dealer: books a real FFL
+        re-acquisition per gun (pushed to FastBound by its own hook) and moves
+        stock back to the main (or given) warehouse. lines = Consignment Out
+        Line names. confirm=true."""
+        require_confirm(f"return_consignment_lines {consignment_out}", confirm)
+        return get_client().call_method(
+            "ffl_core.api.consignment_out.return_consignment_lines",
+            {"consignment_out": consignment_out, "lines": lines,
+             "to_warehouse": to_warehouse},
+        )
+
+    @mcp.tool()
+    def cancel_consignment(
+        consignment_out: str, reason: str, line: str | None = None,
+        confirm: bool = False,
+    ) -> Any:
+        """Cancel a consignment that should never have happened. With line:
+        cancel ONE shipped line ("the gun never left the store" — undoes the
+        disposition; only reachable pre-invoice). Without line: cancel the whole
+        DRAFT document (never-shipped staging record; books/moves nothing).
+        reason is required and recorded. confirm=true."""
+        require_confirm(f"cancel_consignment {consignment_out}", confirm)
+        reason = require_reason(f"cancel_consignment {consignment_out}", reason)
+        if line:
+            return get_client().call_method(
+                "ffl_core.api.consignment_out.cancel_consignment_line",
+                {"consignment_out": consignment_out, "line": line, "reason": reason},
+            )
+        return get_client().call_method(
+            "ffl_core.api.consignment_out.cancel_consignment_out",
+            {"consignment_out": consignment_out, "reason": reason},
+        )
+
+    # ---- H. counter-order cancel ---------------------------------------------
+
+    @mcp.tool()
+    def cancel_order(
+        sales_invoice: str, reason: str, refund_mode: str | None = None,
+        refund_reference: str | None = None, confirm: bool = False,
+    ) -> Any:
+        """Cancel a submitted counter/dealer transfer order — the Pending Order
+        page's Cancel Order action. Cascades safely: cancels the invoice (its
+        hooks reverse the dispositions → stock back in → FastBound delete
+        queued), cancels linked Sales Orders, voids the ShipStation order, and
+        books a refund Payment Entry for whatever was actually paid
+        (refund_mode/refund_reference when a refund is due). reason is required
+        and recorded. confirm=true."""
+        require_confirm(f"cancel_order {sales_invoice}", confirm)
+        reason = require_reason(f"cancel_order {sales_invoice}", reason)
+        return get_client().call_method(
+            "ffl_core.api.manual_order.cancel_order",
+            {"sales_invoice": sales_invoice, "reason": reason,
+             "refund_mode": refund_mode, "refund_reference": refund_reference},
+        )
+
+    # ---- I. file upload ----------------------------------------------------------
 
     @mcp.tool()
     def upload_attachment(
