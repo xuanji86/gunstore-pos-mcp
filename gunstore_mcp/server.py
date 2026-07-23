@@ -11,7 +11,7 @@ from __future__ import annotations
 from mcp.server.fastmcp import FastMCP
 
 from .modes import CPA_MODE, CPA_TOOL_NAMES, FULL_MODE, FilteredMCP, get_mode
-from .tools import curated, generic, reports
+from .tools import curated, distributor, generic, reports
 
 
 def register_tools(mcp, mode: str | None = None) -> None:
@@ -25,6 +25,7 @@ def register_tools(mcp, mode: str | None = None) -> None:
     target = mcp if mode == FULL_MODE else FilteredMCP(mcp, CPA_TOOL_NAMES)
     generic.register(target)
     curated.register(target)
+    distributor.register(target)
     reports.register(target)
 
 

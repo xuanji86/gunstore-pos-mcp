@@ -162,9 +162,28 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 | 网单收入发票失败重试 | `ffl_woo_sync.woocommerce.revenue.create_web_invoice_now` |
 | 撤销一笔寄售结算 | `frappe_cancel_document` 取消那张结算 Sales Invoice（钩子自动反开父单） |
 
+## 9b. 分销商直发（RSR Direct Connect）— `distributor_*` 10 个
+
+只读 6 + 确认队列动作 4。**不含**直接下单(place)、Settings 写、以及 metabox 清单以外的任何变更面。
+
+| 工具 | 服务端方法 | 说明 |
+|---|---|---|
+| `distributor_orders` | `distributor.api.list_orders` | 列 Distributor Order,可按 status/分销商筛 |
+| `distributor_route_queue` | `distributor.router.route_queue` | **确认队列**:待确认的 Draft 单 + 被拦下的网单(未付款/买家 FFL 缺失或过期/地址不全)及原因、目的 FFL 到期日。确认任何单之前先读这个 |
+| `distributor_catalog_search` | `distributor.api.search` | 目录 typeahead(本地同步的目录,不是实时库存) |
+| `distributor_quote` | `distributor.api.quote` | 单品成本/MAP/MSRP/建议价/受限州/封锁旗标;qty 是**缓存目录量**,不保证新鲜度 |
+| `distributor_check_availability` | `distributor.api.check_availability` | **实时**量价二次确认(会打 RSR HTTP,只读) |
+| `distributor_precheck_fds` | `distributor.router.precheck_fds` | 问分销商是否接受发往该 transfer dealer 的 FDS(会打 HTTP,只读) |
+| `distributor_confirm_order` | `distributor.api.confirm_order` | ⚠ **要 confirm**。Draft→Queued 并启动下单 worker = **真实采购不可逆**;RSR 无取消 API。柜台来源单还要求发票全款结清 |
+| `distributor_cancel_order` | `distributor.api.cancel_order` | 要 confirm + **要 reason**。仅在下单前(Draft/Queued)是安全的;已下单的会被标记并告警运营,退货是人工流程 |
+| `distributor_reroute` | `distributor.router.reroute` | 要 confirm。修好拦截原因后重跑路由,**只建 Draft**、幂等 |
+| `distributor_update_order_ffl` | `distributor.router.update_order_ffl` | 要 confirm。FDS Hold 的标准解法;新执照先过与柜台同一条 canonical 校验链(未过期+完整地址)才调 RSR |
+
+> 待补:`fulfillment_options_for_order`(WP metabox 的组合端点)在 gunstore-pos PR #258 合入 develop 后加进来——当前 develop 上还没有该方法,先包装等于发一个只会运行期报错的工具。
+
 ## 10. CPA 模式（只读会计面）+ 报表工具包
 
-**模式开关**：启动环境变量 `GUNSTORE_MCP_MODE=cpa`（默认 `full` = 全部 68 工具，行为与以前完全一致；未知值直接拒绝启动，不会静默降级成可写）。cpa 模式给会计/CPA 用：**写面在工具列表里物理不存在**，不是"存在但会拒绝"。三层防御，缺一层其余仍兜底：
+**模式开关**：启动环境变量 `GUNSTORE_MCP_MODE=cpa`（默认 `full` = 全部 78 工具，行为与以前完全一致；未知值直接拒绝启动，不会静默降级成可写）。cpa 模式给会计/CPA 用：**写面在工具列表里物理不存在**，不是"存在但会拒绝"。三层防御，缺一层其余仍兜底：
 
 1. **注册层**：tools/list 恰好 = 下面 18 个名字（集合相等，测试钉死）；
 2. **客户端层**：一切写方法 + 未逐一列名的点路径方法（`frappe_run_method` 整个不注册）→ `CpaModeRefused`；只读点路径 allowlist 逐一列名，禁通配；
@@ -214,5 +233,5 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 
 ---
 
-*工具总数 68（10 个通用 + 53 个专用 + 5 个报表）；`GUNSTORE_MCP_MODE=cpa` 只读模式恰注册其中 18 个。对应版本 v0.4.1；工具行为以 README.md
+*工具总数 78（10 个通用 + 53 个专用 + 10 个分销商 + 5 个报表）；`GUNSTORE_MCP_MODE=cpa` 只读模式恰注册其中 18 个。对应版本 v0.4.1；工具行为以 README.md
 和源码 `gunstore_mcp/tools/` 为准。*
