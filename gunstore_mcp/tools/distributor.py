@@ -18,9 +18,13 @@ Split by consequence, because "queue operations" spans a wide range:
   cancel API, so there is no undo after that.
 
 Deliberately NOT exposed: direct placement, settings writes, and anything outside the
-metabox's clientele. `fulfillment_options_for_order` is omitted until gunstore-pos
-PR #258 merges — it does not exist on `develop` yet, and wrapping a method the target
-POS lacks would ship a tool that only fails at runtime.
+metabox's clientele.
+
+`fulfillment_options_for_order` (gunstore-pos #258, merged) IS wrapped. Its payload is
+three-valued in two places, which is the one thing a consumer here is likely to get
+wrong: a null means "not determined yet", never "fine". See that tool's docstring —
+an agent that reads it as falsy will report an unchecked destination as shippable,
+which is the same fail-open the POS side was just fixed for.
 """
 from __future__ import annotations
 
@@ -31,6 +35,7 @@ from ..safety import require_confirm, require_reason
 
 _API = "ffl_integrations.distributor.api."
 _ROUTER = "ffl_integrations.distributor.router."
+_OPTIONS = "ffl_integrations.distributor.options."
 
 
 def register(mcp: Any) -> None:
@@ -102,6 +107,41 @@ def register(mcp: Any) -> None:
         accepts drop-shipped firearms — the cheapest way to avoid an FDS Hold.
         Reaches RSR over HTTP; changes nothing."""
         return get_client().call_method(_ROUTER + "precheck_fds", {"do_name": do_name})
+
+    @mcp.tool()
+    def distributor_fulfillment_options(woo_online_order: str) -> Any:
+        """Everything needed to decide how to fill ONE web order: per line, the
+        distributor candidates (cheapest first), a LOCAL stock comparison row, and a
+        verdict. Read-only — it plans nothing and orders nothing.
+
+        THREE-VALUED FIELDS. `if not x` is WRONG on both of these; null means "not
+        determined yet", never "fine":
+
+        * `verdict.fulfillable` — true / false / **null**. Null carries a `reason`:
+          `unknown_destination` (the destination state is not captured yet — the
+          NORMAL state while an order sits in Pending Route or before the buyer's FFL
+          is on file) or `stale_feed` (the only quantity that could cover the line
+          came off a feed past its refresh window).
+        * `restricted_state` — true / false / **null**, same null meaning.
+
+        Treat null as HOLD: report the line as undetermined and quote the `reason`.
+        Never state that such a line can ship — a restricted item to an unresolved
+        destination is exactly the case this must not wave through.
+
+        CANDIDATE FLAGS: `not_carried` = that distributor has no catalog row for the
+        item (listed rather than dropped, so it is not misread as out-of-stock);
+        `blocked` = carried but unbuyable (distributor block / vendor approval);
+        `stale` = quantity from an aged feed. Unbuyable rows sort to the BOTTOM, so
+        the first candidate is the actionable one.
+
+        MONEY: `unit_landed` is PER UNIT and goods-only. Freight does not exist until
+        the order is placed, so `shipping` is null with `shipping_known` false. Do not
+        present `unit_landed` as a landed cost, and do not multiply it by quantity and
+        call the result final."""
+        return get_client().call_method(
+            _OPTIONS + "fulfillment_options_for_order",
+            {"woo_online_order": woo_online_order},
+        )
 
     # --------------------------------------------------------- queue actions
 

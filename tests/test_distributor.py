@@ -52,9 +52,9 @@ class DistributorTools(unittest.TestCase):
     # ---- surface ---------------------------------------------------------
 
     def test_distributor_tool_count_pinned(self):
-        # 6 read + 4 queue actions = 10. TOOLS.md / CLAUDE.md / README quote the
-        # TOTAL (78) — if this moves, move all three docs too.
-        self.assertEqual(len(self.tools), 10)
+        # 7 read + 4 queue actions = 11. TOOLS.md / CLAUDE.md / README quote the
+        # TOTAL (79) — if this moves, move all of them too.
+        self.assertEqual(len(self.tools), 11)
 
     def test_every_tool_is_namespaced(self):
         for name in self.tools:
@@ -104,10 +104,26 @@ class DistributorTools(unittest.TestCase):
                          ("ffl_integrations.distributor.router.precheck_fds",
                           {"do_name": "DO-1"}))
 
+    def test_fulfillment_options_call(self):
+        self.tools["distributor_fulfillment_options"](woo_online_order="WOO-1")
+        self.assertEqual(
+            self.client.calls[0],
+            ("ffl_integrations.distributor.options.fulfillment_options_for_order",
+             {"woo_online_order": "WOO-1"}))
+
+    def test_fulfillment_options_lives_in_the_options_module_not_api(self):
+        """It is the ONLY tool served from `distributor.options`. Pinning that here
+        because a plausible-looking `...api.fulfillment_options_for_order` would pass
+        every other test in this file and only fail against a live POS."""
+        self.tools["distributor_fulfillment_options"](woo_online_order="WOO-1")
+        method, _ = self.client.calls[0]
+        self.assertTrue(method.startswith("ffl_integrations.distributor.options."))
+
     def test_reads_need_no_confirm(self):
         self.tools["distributor_orders"]()
         self.tools["distributor_route_queue"]()
-        self.assertEqual(len(self.client.calls), 2)
+        self.tools["distributor_fulfillment_options"](woo_online_order="WOO-1")
+        self.assertEqual(len(self.client.calls), 3)
 
     # ---- queue actions: gates fire BEFORE any network call ---------------
 
