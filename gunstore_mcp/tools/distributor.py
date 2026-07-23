@@ -12,7 +12,9 @@ Split by consequence, because "queue operations" spans a wide range:
   `precheck_fds`) reach the distributor over HTTP; they change nothing, but they are
   not free, so they say so.
 * **queue actions** — these move a Distributor Order through the v1 human-confirmed
-  gate. ``confirm`` is required on all of them, and it is not ceremony:
+  gate. They are NOT REGISTERED unless `GUNSTORE_MCP_DISTRIBUTOR_ACTIONS` is
+  explicitly truthy (default: off), and on top of that ``confirm`` is required on
+  every one of them — it is not ceremony:
   `confirm_order` transitions Draft → Queued **and enqueues the placement worker**,
   i.e. it is the moment a real purchase from RSR becomes inevitable. RSR has no
   cancel API, so there is no undo after that.
@@ -28,14 +30,34 @@ which is the same fail-open the POS side was just fixed for.
 """
 from __future__ import annotations
 
+import os
 from typing import Any
 
+from ..config import _load_env
 from ..frappe_client import get_client
 from ..safety import require_confirm, require_reason
 
 _API = "ffl_integrations.distributor.api."
 _ROUTER = "ffl_integrations.distributor.router."
 _OPTIONS = "ffl_integrations.distributor.options."
+
+ACTIONS_ENV = "GUNSTORE_MCP_DISTRIBUTOR_ACTIONS"
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def actions_enabled() -> bool:
+    """Whether the 4 queue-action tools are registered at all (default: NO).
+
+    Unlike GUNSTORE_MCP_MODE this does not refuse to start on an unrecognised value,
+    and the asymmetry is deliberate: a typo'd mode could hand back a WRITABLE server,
+    whereas anything not explicitly truthy here simply leaves the actions off. This is
+    fail-closed by construction, so refusing to boot would cost availability and buy
+    no safety.
+
+    Read through _load_env so it is configurable in mcp/.env exactly like the mode and
+    the credentials are — one place operators already know."""
+    _load_env()
+    return (os.environ.get(ACTIONS_ENV) or "").strip().lower() in _TRUTHY
 
 
 def register(mcp: Any) -> None:
@@ -132,7 +154,8 @@ def register(mcp: Any) -> None:
         item (listed rather than dropped, so it is not misread as out-of-stock);
         `blocked` = carried but unbuyable (distributor block / vendor approval);
         `stale` = quantity from an aged feed. Unbuyable rows sort to the BOTTOM, so
-        the first candidate is the actionable one.
+        the first candidate is the one MOST LIKELY to be actionable — but the row's
+        own verdict and flags decide that, not its position. Ranking is not permission.
 
         MONEY: `unit_landed` is PER UNIT and goods-only. Freight does not exist until
         the order is placed, so `shipping` is null with `shipping_known` false. Do not
@@ -144,6 +167,16 @@ def register(mcp: Any) -> None:
         )
 
     # --------------------------------------------------------- queue actions
+    #
+    # OFF unless GUNSTORE_MCP_DISTRIBUTOR_ACTIONS is explicitly truthy. They are not
+    # registered at all rather than registered-and-refusing — the stance cpa mode
+    # already takes (modes.py layer 1: "physically absent, not merely guarded").
+    # A confirm= gate catches a misfire; it does NOT catch an agent that has reasoned
+    # its way into believing it ought to confirm, and the user-level `gunstore-pos`
+    # instance really does point at prod. An absent tool cannot be reasoned about.
+    if not actions_enabled():
+        return
+
 
     @mcp.tool()
     def distributor_confirm_order(do_name: str, confirm: bool = False) -> Any:

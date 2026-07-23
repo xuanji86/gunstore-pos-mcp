@@ -162,7 +162,7 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 | 网单收入发票失败重试 | `ffl_woo_sync.woocommerce.revenue.create_web_invoice_now` |
 | 撤销一笔寄售结算 | `frappe_cancel_document` 取消那张结算 Sales Invoice（钩子自动反开父单） |
 
-## 9b. 分销商直发（RSR Direct Connect）— `distributor_*` 10 个
+## 9b. 分销商直发（RSR Direct Connect）— `distributor_*` 11 个（只读 7 + 动作 4）
 
 只读 6 + 确认队列动作 4。**不含**直接下单(place)、Settings 写、以及 metabox 清单以外的任何变更面。
 
@@ -191,13 +191,13 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 
 遇到 `null` 一律当 **HOLD**:如实说"未判定"并引用 `reason`,**不要说这行可以发货**。受限商品 + 未解析目的地正是这里绝不能放行的情形——POS 侧刚修掉的就是这个 fail-open,消费端读成 falsy 等于在自己这边重新打开它。
 
-**候选行旗标**:`not_carried` = 该分销商目录里没有这个商品(**列出来**而不是丢掉,以免被误读成缺货);`blocked` = 有货但不可买(分销商封锁 / 需厂商批准);`stale` = 数量来自过期 feed。不可买的行一律**沉到最后**,所以第一条候选就是可执行的那条。
+**候选行旗标**:`not_carried` = 该分销商目录里没有这个商品(**列出来**而不是丢掉,以免被误读成缺货);`blocked` = 有货但不可买(分销商封锁 / 需厂商批准);`stale` = 数量来自过期 feed。不可买的行一律**沉到最后**,所以第一条候选是**最可能可执行**的那条——但以该行的 `verdict` 与旗标为准,排序本身不是许可。
 
 **金额**:`unit_landed` 是**单件**、且**只含货款**。运费在下单前不存在,故 `shipping` 为 `null` 且 `shipping_known` 为 `false`。不要把 `unit_landed` 说成到岸价,也不要乘以数量当成最终成本。
 
 ## 10. CPA 模式（只读会计面）+ 报表工具包
 
-**模式开关**：启动环境变量 `GUNSTORE_MCP_MODE=cpa`（默认 `full` = 全部 79 工具，行为与以前完全一致；未知值直接拒绝启动，不会静默降级成可写）。cpa 模式给会计/CPA 用：**写面在工具列表里物理不存在**，不是"存在但会拒绝"。三层防御，缺一层其余仍兜底：
+**模式开关**：启动环境变量 `GUNSTORE_MCP_MODE=cpa`（默认 `full` = 全部 79 工具中默认注册 75（4 个分销商队列动作需显式开启），行为与以前完全一致；未知值直接拒绝启动，不会静默降级成可写）。cpa 模式给会计/CPA 用：**写面在工具列表里物理不存在**，不是"存在但会拒绝"。三层防御，缺一层其余仍兜底：
 
 1. **注册层**：tools/list 恰好 = 下面 18 个名字（集合相等，测试钉死）；
 2. **客户端层**：一切写方法 + 未逐一列名的点路径方法（`frappe_run_method` 整个不注册）→ `CpaModeRefused`；只读点路径 allowlist 逐一列名，禁通配；
@@ -247,5 +247,5 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 
 ---
 
-*工具总数 79（10 个通用 + 53 个专用 + 11 个分销商 + 5 个报表）；`GUNSTORE_MCP_MODE=cpa` 只读模式恰注册其中 18 个。对应版本 v0.4.1；工具行为以 README.md
+*工具总数 79（10 个通用 + 53 个专用 + 11 个分销商 + 5 个报表），默认注册 75（4 个分销商队列动作需 `GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1`）；`GUNSTORE_MCP_MODE=cpa` 只读模式恰注册其中 18 个。对应版本 v0.4.1；工具行为以 README.md
 和源码 `gunstore_mcp/tools/` 为准。*

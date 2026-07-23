@@ -12,11 +12,19 @@ Two things these tests are actually for:
 """
 from __future__ import annotations
 
+import os
 import unittest
 from unittest.mock import patch
 
 from gunstore_mcp.safety import WriteRefused
 from gunstore_mcp.tools import distributor
+
+_ACTION_TOOLS = (
+    "distributor_confirm_order",
+    "distributor_cancel_order",
+    "distributor_reroute",
+    "distributor_update_order_ffl",
+)
 
 
 class FakeMCP:
@@ -39,11 +47,66 @@ class FakeClient:
         return {"ok": True}
 
 
+def _register(actions: str | None) -> dict:
+    """Register the surface with GUNSTORE_MCP_DISTRIBUTOR_ACTIONS set to `actions`
+    (None = variable absent), isolated from the developer's real environment."""
+    env = {k: v for k, v in os.environ.items() if k != distributor.ACTIONS_ENV}
+    if actions is not None:
+        env[distributor.ACTIONS_ENV] = actions
+    mcp = FakeMCP()
+    # _load_env is stubbed out so a developer's own mcp/.env cannot decide whether
+    # these tests see the gate open — the test controls the environment, nothing else.
+    with patch.dict(os.environ, env, clear=True), \
+            patch.object(distributor, "_load_env", lambda: None):
+        distributor.register(mcp)
+    return mcp.tools
+
+
+class ActionGate(unittest.TestCase):
+    """The 4 queue actions are OFF unless explicitly switched on.
+
+    SEMANTICS PINNED HERE: they are **not registered**, not "registered but
+    refusing" — the same stance cpa mode takes (modes.py layer 1: "physically
+    absent, not merely guarded"). The threat is an agent that decides it ought to
+    confirm; a tool that exists and refuses still advertises the affordance and
+    invites a retry, and the user-level `gunstore-pos` instance really does point at
+    prod. `require_confirm` stays on top of this — the gate replaces nothing."""
+
+    def test_the_four_actions_are_absent_by_default(self):
+        tools = _register(None)
+        for name in _ACTION_TOOLS:
+            self.assertNotIn(name, tools, f"{name} must not exist unless opted in")
+
+    def test_the_read_surface_is_untouched_by_the_gate(self):
+        self.assertEqual(len(_register(None)), 7)
+
+    def test_explicit_opt_in_registers_them(self):
+        tools = _register("1")
+        for name in _ACTION_TOOLS:
+            self.assertIn(name, tools)
+        self.assertEqual(len(tools), 11)
+
+    def test_only_explicitly_truthy_values_open_the_gate(self):
+        for on in ("1", "true", "TRUE", "yes", "on", " 1 "):
+            self.assertEqual(len(_register(on)), 11, f"{on!r} should enable")
+        for off in ("", "  ", "0", "false", "off", "no"):
+            self.assertEqual(len(_register(off)), 7, f"{off!r} must stay closed")
+
+    def test_an_unrecognised_value_fails_closed_instead_of_refusing_to_boot(self):
+        """GUNSTORE_MCP_MODE refuses to start on a typo because a typo'd 'cpa' would
+        silently yield a WRITABLE server — the dangerous direction. Here the opposite
+        is true: anything not explicitly truthy leaves the actions off, so this is
+        fail-closed by construction and refusing to boot would cost availability for
+        no safety."""
+        self.assertEqual(len(_register("ture")), 7)
+        self.assertEqual(len(_register("enabled")), 7)
+
+
 class DistributorTools(unittest.TestCase):
     def setUp(self):
-        mcp = FakeMCP()
-        distributor.register(mcp)
-        self.tools = mcp.tools
+        # Actions explicitly enabled: this class exercises them. The default-off
+        # behaviour is ActionGate's subject.
+        self.tools = _register("1")
         self.client = FakeClient()
         p = patch.object(distributor, "get_client", return_value=self.client)
         p.start()
