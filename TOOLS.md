@@ -164,7 +164,7 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 
 ## 9b. 分销商直发（RSR Direct Connect）— `distributor_*` 11 个（只读 7 + 动作 4）
 
-只读 6 + 确认队列动作 4。**不含**直接下单(place)、Settings 写、以及 metabox 清单以外的任何变更面。
+只读 7 + 确认队列动作 4。**不含**直接下单(place)、Settings 写、以及 metabox 清单以外的任何变更面。
 
 | 工具 | 服务端方法 | 说明 |
 |---|---|---|

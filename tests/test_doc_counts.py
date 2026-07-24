@@ -48,7 +48,11 @@ def _count(module, *, actions: str | None = None) -> int:
     if actions is not None:
         env[distributor.ACTIONS_ENV] = actions
     mcp = _FakeMCP()
-    with patch.dict(os.environ, env, clear=True):
+    # _load_env stubbed for the same reason as in test_distributor: a developer's own
+    # mcp/.env must not be able to decide what "the live surface" is here, or this
+    # guard would pass or fail depending on whose machine it runs on.
+    with patch.dict(os.environ, env, clear=True), \
+            patch.object(distributor, "_load_env", lambda: None):
         module.register(mcp)
     return len(mcp.tools)
 
@@ -77,7 +81,10 @@ CLAIMS = [
     ("README.md", r"(\d+) tools total", "total"),
     ("README.md", r"(\d+) generic", "generic"),
     ("README.md", r"(\d+) curated", "curated"),
-    ("README.md", r"(\d+) distributor", "distributor"),
+    # anchored on the trailing " +" so it cannot latch onto the prose phrase
+    # "the 4 distributor queue actions" — a cost of matching EVERY occurrence
+    # rather than the first: loose patterns start colliding with sentences.
+    ("README.md", r"(\d+) distributor \+", "distributor"),
     ("README.md", r"(\d+) CPA reports", "reports"),
     ("README.md", r"(\d+) register by default", "default"),
     ("CLAUDE.md", r"\((\d+) 工具", "total"),
@@ -110,17 +117,25 @@ class ExactClaims(unittest.TestCase):
         self.live = _live()
 
     def test_every_documented_count_matches_the_registered_surface(self):
+        """EVERY occurrence must be true, not just the first.
+
+        re.search stops at the first hit, which let a stale "只读 6" survive three
+        lines below a correct "只读 7" — the guard read the right number and never
+        looked further. A doc claim is not "the first place a number appears", it is
+        every place it appears."""
         for fname, pattern, key in CLAIMS:
             text = (ROOT / fname).read_text(encoding="utf-8")
-            m = re.search(pattern, text)
-            self.assertIsNotNone(
-                m, f"{fname}: no match for {pattern!r} — the claim was rephrased or "
+            hits = list(re.finditer(pattern, text))
+            self.assertTrue(
+                hits, f"{fname}: no match for {pattern!r} — the claim was rephrased or "
                 "removed, so this pin stopped guarding anything. Restore the wording "
                 "or update CLAIMS deliberately.")
-            self.assertEqual(
-                int(m.group(1)), self.live[key],
-                f"{fname} claims {m.group(1)} for {key}, live surface has "
-                f"{self.live[key]}")
+            for m in hits:
+                line = text.count("\n", 0, m.start()) + 1
+                self.assertEqual(
+                    int(m.group(1)), self.live[key],
+                    f"{fname}:{line} claims {m.group(1)} for {key}, live surface has "
+                    f"{self.live[key]}")
 
     def test_the_buckets_add_up_to_the_total(self):
         L = self.live
