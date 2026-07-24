@@ -1,8 +1,10 @@
 # gunstore-pos-mcp — POS 的 MCP 服务器(Python/uv)
 
-gunstore-pos 平台的 MCP server 源码仓(68 工具 = 10 个通用 Frappe CRUD + 53 个业务工具 + 5 个 CPA 报表工具:寄售出库/订单履约/4473/RSR/FastBound/Woo/库存/FFL/财税报表)。工具清单与语义见 `TOOLS.md`。gunstore-pos 仓的 `.mcp.json` 以 `uv run --directory <本仓> gunstore-mcp` 方式引用。
+gunstore-pos 平台的 MCP server 源码仓(79 工具 = 10 个通用 Frappe CRUD + 53 个业务工具 + 11 个分销商工具 + 5 个 CPA 报表工具:寄售出库/订单履约/4473/RSR/FastBound/Woo/库存/FFL/财税报表;**默认注册 75 个**——4 个分销商队列动作需 `GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1` 显式开启,否则物理不注册)。工具清单与语义见 `TOOLS.md`。gunstore-pos 仓的 `.mcp.json` 以 `uv run --directory <本仓> gunstore-mcp` 方式引用。
 
 **模式**:`GUNSTORE_MCP_MODE=cpa` 启动只读会计面(恰 18 工具,写面物理不注册 + client 层方法 allowlist + Settings 读 blocklist 三层防御,见 `gunstore_mcp/modes.py`);默认 `full` 全量。未知模式值拒绝启动(fail-closed)。
+
+**分销商队列动作闸**:`GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1` 才注册那 4 个动作工具(confirm/cancel/reroute/update_order_ffl),默认**物理不注册**——与 cpa 模式同一姿态(存在但拒绝挡不住"agent 自认为该确认",而用户级实例真的指向 prod)。与 `GUNSTORE_MCP_MODE` 相互独立,且开它**不会**给 cpa 面加任何工具。此处不像 mode 那样对未知值拒绝启动:任何非显式真值都=关,方向天然 fail-closed。
 
 ## 命令
 - 测试:`uv run --with pytest pytest`(pytest 不在项目依赖里,用 --with 注入)
@@ -10,7 +12,7 @@ gunstore-pos 平台的 MCP server 源码仓(68 工具 = 10 个通用 Frappe CRUD
 
 ## 关键 gotcha
 - **运行实例可能指向 prod POS**。改本仓代码 ≠ 可以拿连接中的 MCP 工具打 prod;联调一律配置指向 `dev.localhost:8000`(gunstore-pos `make dev-up` 起的本地站)。
-- 工具行为改动要同步更新 `TOOLS.md`(工具总数三处要一致:TOOLS.md 脚注 / 本文件 / README;测试里 test_curated_tool_count_pinned 钉住计数)。
+- 工具行为改动要同步更新 `TOOLS.md`。**工具总数钉在 6 处,改一个就要改全部**:`TOOLS.md` §10 开头 + 文末脚注 / 本文件 / `README.md` / `tests/test_modes.py::test_full_mode_registers_79_tools_including_the_cpa_18`(总数)/ `tests/test_curated.py::test_curated_tool_count_pinned`(curated 桶)/ `tests/test_distributor.py::test_distributor_tool_count_pinned`(分销商桶)。三条测试是硬闸——加一个模块必然先被它们拦下,这是好事。**注意这个数字本身历史上被低估过两次**(先写 3 处、后写 5 处),每次都是"又冒出一处没跟着改";加新桶时请连同本行一起更新计数。
 - 服务端签名以 gunstore-pos 源码为准,落码前逐个核对——MCP 只是薄包装,签名漂移不会在本仓测试里暴露(测试全 mock)。
 
 ## 部署政策

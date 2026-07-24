@@ -78,7 +78,7 @@ Secrets stay in `.env` (loaded by the server), not in the agent config.
 
 > **中文速查手册（按"你想干什么"组织，含安全须知与替代路径）：[TOOLS.md](TOOLS.md)**
 
-68 tools total: 10 generic + 53 curated + 5 CPA reports.
+79 tools total: 10 generic + 53 curated + 11 distributor + 5 CPA reports; 75 register by default — the 4 distributor queue actions are opt-in via `GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1` (they are not registered otherwise).
 
 **Modes**: `GUNSTORE_MCP_MODE=cpa` starts a read-only accountant surface —
 exactly 18 tools (the write surface is never registered), a per-name read-only

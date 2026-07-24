@@ -584,8 +584,10 @@ class CuratedTools(unittest.TestCase):
 			self.assertIn(name, self.tools)
 
 	def test_curated_tool_count_pinned(self):
-		# 53 curated + 10 generic + 5 reports = 68 total. TOOLS.md / CLAUDE.md /
-		# README.md quote 68 — if this assertion moves, move all three docs too.
+		# This pins the CURATED bucket only. Total = 53 curated + 10 generic +
+		# 11 distributor + 5 reports = 79, pinned separately in
+		# test_modes.py::test_full_mode_registers_79_tools_including_the_cpa_18.
+		# Moving either number means moving README.md, CLAUDE.md and TOOLS.md (x2).
 		self.assertEqual(len(self.tools), 53)
 
 

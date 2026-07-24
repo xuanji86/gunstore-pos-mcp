@@ -54,7 +54,10 @@ def register(mcp: Any) -> None:
         (default here — the CPA tax-reporting view: per-line tax from ERPNext's
         stored item-wise tax details, tax rows classified to Sales Tax /
         Shipping / Unclassified fail-closed). channel: POS | Web | B2B-Manual
-        (empty = all). Profit is net (pre-tax). Read-only."""
+        (empty = all). product_type: "Firearms" | "Non-Firearms" (empty = all) —
+        any OTHER value is REFUSED by the server rather than ignored (F-2: an
+        unrecognised value used to return everything unfiltered, which reads as
+        "no rows of that type"). Profit is net (pre-tax). Read-only."""
         filters: dict[str, Any] = {
             "from_date": from_date, "to_date": to_date, "view": view,
         }

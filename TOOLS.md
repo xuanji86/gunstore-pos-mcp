@@ -162,9 +162,42 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 | 网单收入发票失败重试 | `ffl_woo_sync.woocommerce.revenue.create_web_invoice_now` |
 | 撤销一笔寄售结算 | `frappe_cancel_document` 取消那张结算 Sales Invoice（钩子自动反开父单） |
 
+## 9b. 分销商直发（RSR Direct Connect）— `distributor_*` 11 个（只读 7 + 动作 4）
+
+只读 7 + 确认队列动作 4。**不含**直接下单(place)、Settings 写、以及 metabox 清单以外的任何变更面。
+
+| 工具 | 服务端方法 | 说明 |
+|---|---|---|
+| `distributor_orders` | `distributor.api.list_orders` | 列 Distributor Order,可按 status/分销商筛 |
+| `distributor_route_queue` | `distributor.router.route_queue` | **确认队列**:待确认的 Draft 单 + 被拦下的网单(未付款/买家 FFL 缺失或过期/地址不全)及原因、目的 FFL 到期日。确认任何单之前先读这个 |
+| `distributor_catalog_search` | `distributor.api.search` | 目录 typeahead(本地同步的目录,不是实时库存) |
+| `distributor_quote` | `distributor.api.quote` | 单品成本/MAP/MSRP/建议价/受限州/封锁旗标;qty 是**缓存目录量**,不保证新鲜度 |
+| `distributor_check_availability` | `distributor.api.check_availability` | **实时**量价二次确认(会打 RSR HTTP,只读) |
+| `distributor_precheck_fds` | `distributor.router.precheck_fds` | 问分销商是否接受发往该 transfer dealer 的 FDS(会打 HTTP,只读) |
+| `distributor_fulfillment_options` | `distributor.options.fulfillment_options_for_order` | 单张网单的**决策面板**:逐行候选分销商(最便宜在前)+ 本地库存对比行 + 裁决。只读。**读返回值前先看下面的三态说明** |
+| `distributor_confirm_order` | `distributor.api.confirm_order` | ⚠ **要 confirm**。Draft→Queued 并启动下单 worker = **真实采购不可逆**;RSR 无取消 API。柜台来源单还要求发票全款结清 |
+| `distributor_cancel_order` | `distributor.api.cancel_order` | 要 confirm + **要 reason**。仅在下单前(Draft/Queued)是安全的;已下单的会被标记并告警运营,退货是人工流程 |
+| `distributor_reroute` | `distributor.router.reroute` | 要 confirm。修好拦截原因后重跑路由,**只建 Draft**、幂等 |
+| `distributor_update_order_ffl` | `distributor.router.update_order_ffl` | 要 confirm。FDS Hold 的标准解法;新执照先过与柜台同一条 canonical 校验链(未过期+完整地址)才调 RSR |
+
+### `distributor_fulfillment_options` 的返回值契约(容易读错,单列)
+
+**两个字段是三态,`if not x` 在它们身上是错的**——`null` 的意思是"还判不了",不是"没问题":
+
+| 字段 | 取值 | `null` 的含义 |
+|---|---|---|
+| `verdict.fulfillable` | `true` / `false` / `null` | 判不了,看同级 `reason`:`unknown_destination`(目的州还没捕获——订单停在 Pending Route 或买家 FFL 未上传时**这是常态**)或 `stale_feed`(唯一够量的候选来自过期 feed) |
+| `restricted_state` | `true` / `false` / `null` | 同上,受限州判定尚无法做出 |
+
+遇到 `null` 一律当 **HOLD**:如实说"未判定"并引用 `reason`,**不要说这行可以发货**。受限商品 + 未解析目的地正是这里绝不能放行的情形——POS 侧刚修掉的就是这个 fail-open,消费端读成 falsy 等于在自己这边重新打开它。
+
+**候选行旗标**:`not_carried` = 该分销商目录里没有这个商品(**列出来**而不是丢掉,以免被误读成缺货);`blocked` = 有货但不可买(分销商封锁 / 需厂商批准);`stale` = 数量来自过期 feed。不可买的行一律**沉到最后**,所以第一条候选是**最可能可执行**的那条——但以该行的 `verdict` 与旗标为准,排序本身不是许可。
+
+**金额**:`unit_landed` 是**单件**、且**只含货款**。运费在下单前不存在,故 `shipping` 为 `null` 且 `shipping_known` 为 `false`。不要把 `unit_landed` 说成到岸价,也不要乘以数量当成最终成本。
+
 ## 10. CPA 模式（只读会计面）+ 报表工具包
 
-**模式开关**：启动环境变量 `GUNSTORE_MCP_MODE=cpa`（默认 `full` = 全部 68 工具，行为与以前完全一致；未知值直接拒绝启动，不会静默降级成可写）。cpa 模式给会计/CPA 用：**写面在工具列表里物理不存在**，不是"存在但会拒绝"。三层防御，缺一层其余仍兜底：
+**模式开关**：启动环境变量 `GUNSTORE_MCP_MODE=cpa`（默认 `full` = 全部 79 工具中默认注册 75（4 个分销商队列动作需显式开启），行为与以前完全一致；未知值直接拒绝启动，不会静默降级成可写）。cpa 模式给会计/CPA 用：**写面在工具列表里物理不存在**，不是"存在但会拒绝"。三层防御，缺一层其余仍兜底：
 
 1. **注册层**：tools/list 恰好 = 下面 18 个名字（集合相等，测试钉死）；
 2. **客户端层**：一切写方法 + 未逐一列名的点路径方法（`frappe_run_method` 整个不注册）→ `CpaModeRefused`；只读点路径 allowlist 逐一列名，禁通配；
@@ -214,5 +247,5 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 
 ---
 
-*工具总数 68（10 个通用 + 53 个专用 + 5 个报表）；`GUNSTORE_MCP_MODE=cpa` 只读模式恰注册其中 18 个。对应版本 v0.4.1；工具行为以 README.md
+*工具总数 79（10 个通用 + 53 个专用 + 11 个分销商 + 5 个报表），默认注册 75（4 个分销商队列动作需 `GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1`）；`GUNSTORE_MCP_MODE=cpa` 只读模式恰注册其中 18 个。对应版本 v0.4.1；工具行为以 README.md
 和源码 `gunstore_mcp/tools/` 为准。*

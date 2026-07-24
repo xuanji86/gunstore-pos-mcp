@@ -5,7 +5,9 @@ allowlist (set equality, per spec acceptance #1 — not merely "no write tools")
 Layer 2 — client: mutating client methods + non-allowlisted dotted methods
 raise CpaModeRefused before any HTTP.
 Layer 3 — the 7 integration Settings doctypes refuse get/list reads in cpa mode.
-Full mode must behave exactly as before (67 tools, no refusals).
+Full mode must behave exactly as before (no refusals); its size is pinned below and
+in tests/test_doc_counts.py rather than restated here in prose, because a number
+written into a docstring is exactly the kind that goes stale unnoticed.
 """
 from __future__ import annotations
 
@@ -22,6 +24,32 @@ from gunstore_mcp.modes import (
 	CpaModeRefused,
 	get_mode,
 )
+from gunstore_mcp.tools import distributor
+
+
+def _actions(value):
+	"""Context manager controlling GUNSTORE_MCP_DISTRIBUTOR_ACTIONS (None = absent).
+	_load_env is stubbed so a developer's own mcp/.env cannot flip these assertions."""
+	env = {k: v for k, v in os.environ.items() if k != distributor.ACTIONS_ENV}
+	if value is not None:
+		env[distributor.ACTIONS_ENV] = value
+	return _Both(patch.dict(os.environ, env, clear=True),
+		patch.object(distributor, "_load_env", lambda: None))
+
+
+class _Both:
+	def __init__(self, *ctxs):
+		self._ctxs = ctxs
+
+	def __enter__(self):
+		for c in self._ctxs:
+			c.__enter__()
+		return self
+
+	def __exit__(self, *exc):
+		for c in reversed(self._ctxs):
+			c.__exit__(*exc)
+		return False
 
 # Spelled out independently of modes.py so a drift in EITHER place fails the
 # set-equality assertion (the constant can't vouch for itself).
@@ -75,10 +103,32 @@ class RegistrationLayer(unittest.TestCase):
 		self.assertEqual(set(mcp.tools), EXPECTED_CPA_TOOLS)
 		self.assertEqual(len(mcp.tools), 18)
 
-	def test_full_mode_registers_68_tools_including_the_cpa_18(self):
+	def test_default_full_mode_holds_the_four_queue_actions_back(self):
+		"""Default full mode is 75, not 79: the distributor queue actions require an
+		explicit opt-in. Pinned separately from the 79 so that turning the gate into a
+		no-op would break a test rather than quietly restore the old surface."""
 		mcp = FakeMCP()
-		server.register_tools(mcp, mode="full")
-		self.assertEqual(len(mcp.tools), 68)
+		with _actions(None):
+			server.register_tools(mcp, mode="full")
+		self.assertEqual(len(mcp.tools), 75)
+		for name in ("distributor_confirm_order", "distributor_cancel_order",
+				"distributor_reroute", "distributor_update_order_ffl"):
+			self.assertNotIn(name, mcp.tools)
+
+	def test_the_actions_flag_cannot_widen_cpa_mode(self):
+		"""The two switches are independent, and cpa is the stricter one: opting into
+		the queue actions must not add a single tool to the accountant surface."""
+		mcp = FakeMCP()
+		with _actions("1"):
+			server.register_tools(mcp, mode="cpa")
+		self.assertEqual(set(mcp.tools), EXPECTED_CPA_TOOLS)
+		self.assertEqual(len(mcp.tools), 18)
+
+	def test_full_mode_registers_79_tools_including_the_cpa_18(self):
+		mcp = FakeMCP()
+		with _actions("1"):
+			server.register_tools(mcp, mode="full")
+		self.assertEqual(len(mcp.tools), 79)
 		self.assertTrue(EXPECTED_CPA_TOOLS <= set(mcp.tools))
 		# regression: none of the write faces leaked out of full mode
 		for name in ("frappe_run_method", "dispose_order", "receive_goods",
