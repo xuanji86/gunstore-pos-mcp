@@ -8,6 +8,8 @@ from typing import Any
 from ..frappe_client import get_client
 from ..safety import (
     WriteRefused,
+    check_fields_writable,
+    check_method_call_writable,
     check_write_allowed,
     require_confirm,
     strip_passwords,
@@ -122,16 +124,26 @@ def register(mcp: Any) -> None:
 
     @mcp.tool()
     def frappe_create_document(doctype: str, values: dict) -> Any:
-        """Create a document. Credential/password fields are stripped automatically."""
+        """Create a document. Credential/password fields are stripped automatically.
+        A few fields are refused outright rather than stripped — see
+        frappe_update_document."""
         check_write_allowed(doctype)
+        # BEFORE strip_passwords, always: afterwards the credential fields are
+        # already gone and the refusal would quietly become a strip.
+        check_fields_writable(doctype, values)
         clean, stripped = strip_passwords(doctype, values)
         return stripped_note(get_client().create_document(doctype, clean), stripped)
 
     @mcp.tool()
     def frappe_update_document(doctype: str, name: str, values: dict) -> Any:
         """Update fields on a document. Credential/password fields are stripped
-        automatically (set those in Desk)."""
+        automatically (set those in Desk). Some fields are refused outright and
+        fail the whole call: on GunBroker Settings the environment switches
+        (sandbox_mode, enabled, base_url_override), the credentials and the money
+        fields — those decide whether a real firearm reaches the real
+        marketplace, so they are a Desk change by a person."""
         check_write_allowed(doctype)
+        check_fields_writable(doctype, values)  # before strip_passwords
         clean, stripped = strip_passwords(doctype, values)
         return stripped_note(get_client().update_document(doctype, name, clean), stripped)
 
@@ -168,6 +180,10 @@ def register(mcp: Any) -> None:
         use the structured frappe_*_document tools, which enforce the guards.
         Methods whose name implies a destructive action — or that are on the
         explicit high-consequence list — require confirm=true."""
+        # run_method is the escape hatch around the structured CRUD guards, so
+        # the never-writable rule has to be enforced here too — by field name,
+        # since there is no document body to inspect.
+        check_method_call_writable(method, kwargs)
         if method in _BLOCKED_GENERIC_METHODS:
             raise WriteRefused(
                 f"Refused: '{method}' is a generic Frappe mutator that would bypass the "

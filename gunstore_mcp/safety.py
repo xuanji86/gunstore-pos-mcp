@@ -5,6 +5,7 @@ Concerns kept in one place so generic and curated tools can't diverge:
   - require_confirm: destructive/consequential ops need an explicit confirm=true.
   - check_write_allowed: structural/permission doctypes are read-only here.
   - check_fields_writable: some fields are not writable through the MCP at all.
+  - check_method_call_writable: the same rule, for the run_method escape hatch.
   - stripped_note: uniform "field X was not sent" response wrapper.
 """
 from __future__ import annotations
@@ -141,24 +142,81 @@ def stripped_note(result, stripped: list[str]):
     }
 
 
-def check_fields_writable(doctype: str, values: dict) -> None:
-    """Refuse the whole write if it touches a field the MCP may never set.
-
-    Top level only: the forbidden names are all scalars on the parent doctype,
-    and a child row that happens to reuse one of these names (a `category_map`
-    row with an `enabled` column, say) is a different field entirely."""
+def _forbidden_hit(doctype: str, names) -> list[str]:
     forbidden = MCP_NEVER_WRITES.get(doctype)
     if not forbidden:
-        return
-    hit = sorted(k for k in values if k in forbidden)
-    if not hit:
-        return
+        return []
+    return sorted(set(names) & forbidden)
+
+
+def _refuse(doctype: str, hit: list[str]) -> None:
     raise WriteRefused(
         f"Refused: {hit} cannot be set through the MCP on '{doctype}'. "
         f"These decide which GunBroker gets contacted, hold the credentials, or "
         f"move money — they are changed in Desk by a person, deliberately, not "
-        f"in a tool call. Not writable here: {sorted(forbidden)}."
+        f"in a tool call. Not writable here: {sorted(MCP_NEVER_WRITES[doctype])}."
     )
+
+
+def check_fields_writable(doctype: str, values: dict) -> None:
+    """Refuse the whole write if it touches a field the MCP may never set.
+
+    **Call this BEFORE strip_passwords.** After it, the credential fields are
+    already gone, so a refusal silently degrades into a strip — which is the
+    exact behaviour MCP_NEVER_WRITES exists to rule out (see its comment).
+
+    Top level only: the forbidden names are all scalars on the parent doctype,
+    and a child row that happens to reuse one of these names (a `category_map`
+    row with an `enabled` column, say) is a different field entirely."""
+    hit = _forbidden_hit(doctype, values)
+    if hit:
+        _refuse(doctype, hit)
+
+
+# Method names that write a field by name rather than through a document body.
+# run_method is the escape hatch: it reaches any whitelisted dotted path, so the
+# structured guards above never see the doctype or the fieldname.
+_SETTER_METHOD = re.compile(
+    r"(set_value|set_single_value|set_default|db_set|bulk_update|update_doc|save_doc)", re.I)
+
+
+def _strings_and_keys(obj, out: set) -> set:
+    """Every string and every dict key anywhere in the payload.
+
+    Deliberately shape-agnostic. set_value takes (doctype, name, fieldname,
+    value); set_single_value takes (doctype, fieldname, value); fieldname can
+    also be a dict of several fields. Rather than model each signature — and be
+    wrong about the next one — collect every name-ish token and match against
+    that."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            out.add(k)
+            _strings_and_keys(v, out)
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            _strings_and_keys(v, out)
+    elif isinstance(obj, str):
+        out.add(obj)
+    return out
+
+
+def check_method_call_writable(method: str, kwargs: dict | None) -> None:
+    """Refuse a run_method call that would set a never-writable field.
+
+    Only field-setter methods are inspected, so an ordinary whitelisted call
+    that merely mentions a doctype in passing is unaffected. Frappe's own
+    mutators are already refused wholesale by generic._BLOCKED_GENERIC_METHODS;
+    this covers the ones that are not on that list — including app-side
+    whitelisted helpers that end up writing Settings."""
+    if not kwargs or not _SETTER_METHOD.search(method or ""):
+        return
+    tokens = _strings_and_keys(kwargs, set())
+    for doctype in MCP_NEVER_WRITES:
+        if doctype not in tokens:
+            continue
+        hit = _forbidden_hit(doctype, tokens)
+        if hit:
+            _refuse(doctype, hit)
 
 
 def require_confirm(action: str, confirm: bool) -> None:

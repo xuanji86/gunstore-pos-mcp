@@ -160,7 +160,13 @@ def register(mcp: Any) -> None:
         physical gun its own title instead of the model name shared by every serial.
         Not yet live: it takes effect on the next push (woo_push_serial / woo_push_item).
         The field is fetch_if_empty so the value persists once set."""
-        return get_client().update_document("Serial No", serial_no, {"item_name": title})
+        # No-op for Serial No today: the rule is that EVERY tool writing a
+        # document body passes through the guard, so the set of writers and the
+        # set of guarded writers stay identical and a new tool cannot quietly
+        # become the exception. Enforced by tests/test_never_writes_surface.py.
+        values = {"item_name": title}
+        check_fields_writable("Serial No", values)
+        return get_client().update_document("Serial No", serial_no, values)
 
     # ------------------------------------------------- GunBroker channel
     #
@@ -170,10 +176,17 @@ def register(mcp: Any) -> None:
     # directly.
     #
     # Which GunBroker gets contacted is `GunBroker Settings.sandbox_mode` on the
-    # POS site this MCP points at, and that field is not writable from here:
-    # update_settings refuses it outright (safety.MCP_NEVER_WRITES), so no tool
-    # on this server can move the environment. It is changed in Desk, by a
-    # person. Point the MCP at dev.localhost and you are on that site's setting.
+    # POS site this MCP points at. That field is refused on every write path
+    # this server has — update_settings, frappe_update_document,
+    # frappe_create_document, and frappe_run_method's field setters all raise
+    # (safety.MCP_NEVER_WRITES). It is changed in Desk, by a person.
+    #
+    # "Every write path" is a claim with a test behind it rather than a promise:
+    # tests/test_never_writes_surface.py enumerates the registered tools, drives
+    # each writer with a forbidden payload, and fails if a new tool ever writes
+    # a document body without the guard. The earlier version of this comment
+    # said the same thing when only ONE path was covered, which is worse than
+    # saying nothing — people act on it.
     #
     # Roles differ: gb_test_connection needs SYSTEM_ROLES on the POS, the other
     # three need STOCK_ROLES. An API user with only stock roles gets a 403 from
@@ -186,8 +199,9 @@ def register(mcp: Any) -> None:
         Reports which environment answered: the "sandbox" key in the reply is
         true for api.sandbox.gunbroker.com, false for the real marketplace.
         Read that key before doing anything else — it is how you find out which
-        GunBroker this POS is wired to, and it cannot be changed from this
-        server (update_settings refuses sandbox_mode; it is a Desk change).
+        GunBroker this POS is wired to. It cannot be changed from this server:
+        every write path refuses sandbox_mode, so switching environment is a
+        Desk change made by a person.
         Needs SYSTEM_ROLES on the POS — the other three gb_ tools need only
         STOCK_ROLES, so a stock-only API user sees a 403 here alone."""
         return get_client().call_method(
