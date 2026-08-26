@@ -221,6 +221,38 @@ class CuratedTools(unittest.TestCase):
 		self.assertEqual(self._last(), (
 			"get_document", "GunBroker Settings", "GunBroker Settings"))
 
+	def test_update_settings_gunbroker_refuses_the_environment_switch(self):
+		"""Without this the chain is: flip sandbox_mode with no confirm at all,
+		then one confirm=true push, and a real gun is on the real marketplace —
+		while three places in this repo claim the environment can't be chosen here.
+		Refused outright, and nothing reaches the client."""
+		for values in ({"sandbox_mode": 0}, {"enabled": 1},
+				{"base_url_override": "https://api.gunbroker.com/v1"},
+				{"dev_key": "leaked"}, {"password": "leaked"}, {"username": "someone"},
+				{"end_strategy": "Manual Only"}, {"card_checkout_enabled": 1},
+				{"check_deposit_account": "Some Bank - OSA"},
+				{"page_size": 50, "sandbox_mode": 0}):
+			with self.subTest(values=values):
+				before = len(self.client.calls)
+				with self.assertRaises(WriteRefused):
+					self.tools["update_settings"]("gunbroker", values)
+				self.assertEqual(len(self.client.calls), before,
+					"refused write still reached the client")
+
+	def test_update_settings_gunbroker_allows_the_ordinary_fields(self):
+		self.tools["update_settings"]("gunbroker", {"page_size": 50, "max_pictures": 8})
+		self.assertEqual(self._last(), (
+			"update_document", "GunBroker Settings", "GunBroker Settings",
+			{"page_size": 50, "max_pictures": 8},
+		))
+
+	def test_update_settings_other_doctypes_are_not_narrowed(self):
+		"""The never-writes rule is GunBroker-only on purpose; widening it to the
+		other seven Settings is a separate decision, not a side effect."""
+		self.tools["update_settings"]("woocommerce", {"enabled": 1})
+		self.assertEqual(self._last()[:3],
+			("update_document", "WooCommerce Settings", "WooCommerce Settings"))
+
 	def test_get_settings_shipstation_and_dealer(self):
 		self.tools["get_settings"]("shipstation")
 		self.assertEqual(self._last(), (

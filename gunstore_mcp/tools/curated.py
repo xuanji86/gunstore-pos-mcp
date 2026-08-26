@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from ..frappe_client import get_client
-from ..safety import require_confirm, require_reason, strip_passwords, stripped_note
+from ..safety import (check_fields_writable, require_confirm, require_reason,
+                      strip_passwords, stripped_note)
 
 _SETTINGS = {
     "ffl": "FFL Settings",
@@ -41,8 +42,13 @@ def register(mcp: Any) -> None:
     def update_settings(which: str, values: dict) -> Any:
         """Update an integration's Settings. which: ffl | fastbound | rsr | payroc |
         woocommerce | dealer (dealer-portal WooCommerce) | shipstation | gunbroker.
-        Credential/password fields are stripped — set those in Desk."""
+        Credential/password fields are stripped — set those in Desk.
+        On gunbroker the environment, credential and money fields are refused
+        outright (enabled, sandbox_mode, base_url_override, dev_key,
+        sandbox_dev_key, username, password, end_strategy, check_deposit_account,
+        card_checkout_enabled) — the call fails rather than half-applying."""
         dt = _resolve(which)
+        check_fields_writable(dt, values)
         clean, stripped = strip_passwords(dt, values)
         return stripped_note(get_client().update_document(dt, dt, clean), stripped)
 
@@ -140,10 +146,18 @@ def register(mcp: Any) -> None:
     # These reach GunBroker only through the POS: every one calls a whitelisted
     # method in ffl_integrations, which owns the credentials, the listing guards
     # and the sandbox/production choice. Nothing here talks to GunBroker
-    # directly, and nothing here can pick an environment — that is
-    # `GunBroker Settings.sandbox_mode` on the POS site this MCP is pointed at,
-    # and it is the only thing that decides whether a push reaches the real
-    # marketplace. Point the MCP at dev.localhost and you are on the sandbox.
+    # directly.
+    #
+    # Which GunBroker gets contacted is `GunBroker Settings.sandbox_mode` on the
+    # POS site this MCP points at, and that field is not writable from here:
+    # update_settings refuses it outright (safety.MCP_NEVER_WRITES), so no tool
+    # on this server can move the environment. It is changed in Desk, by a
+    # person. Point the MCP at dev.localhost and you are on that site's setting.
+    #
+    # Roles differ: gb_test_connection needs SYSTEM_ROLES on the POS, the other
+    # three need STOCK_ROLES. An API user with only stock roles gets a 403 from
+    # the probe and nothing else — worth knowing, since the probe is the one
+    # these docs tell you to call first.
 
     @mcp.tool()
     def gb_test_connection() -> Any:
@@ -151,7 +165,10 @@ def register(mcp: Any) -> None:
         Reports which environment answered: the "sandbox" key in the reply is
         true for api.sandbox.gunbroker.com, false for the real marketplace.
         Read that key before doing anything else — it is how you find out which
-        GunBroker this POS is wired to."""
+        GunBroker this POS is wired to, and it cannot be changed from this
+        server (update_settings refuses sandbox_mode; it is a Desk change).
+        Needs SYSTEM_ROLES on the POS — the other three gb_ tools need only
+        STOCK_ROLES, so a stock-only API user sees a 403 here alone."""
         return get_client().call_method(
             "ffl_integrations.gunbroker.client_api.test_connection"
         )
