@@ -216,6 +216,11 @@ class CuratedTools(unittest.TestCase):
 
 	# ------------------------------------------ E: settings map additions
 
+	def test_get_settings_gunbroker(self):
+		self.tools["get_settings"]("gunbroker")
+		self.assertEqual(self._last(), (
+			"get_document", "GunBroker Settings", "GunBroker Settings"))
+
 	def test_get_settings_shipstation_and_dealer(self):
 		self.tools["get_settings"]("shipstation")
 		self.assertEqual(self._last(), (
@@ -279,6 +284,69 @@ class CuratedTools(unittest.TestCase):
 			"call_method", "ffl_woo_sync.woocommerce.client_api.delist_serial_now",
 			{"serial_no": "SN1", "site": "dealer"},
 		))
+
+	# ------------------------------------------------- F2: GunBroker channel
+
+	def test_gb_test_connection_read_only(self):
+		self.tools["gb_test_connection"]()
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_integrations.gunbroker.client_api.test_connection", {},
+		))
+
+	def test_gb_push_serial(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["gb_push_serial"]("SN1")
+		self.tools["gb_push_serial"]("SN1", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_integrations.gunbroker.client_api.push_serial_now",
+			{"serial_no": "SN1"},
+		))
+
+	def test_gb_push_serial_never_sends_relist(self):
+		"""push_serial_now takes a `relist` flag that lifts the manually-ended
+		sentinel. The MCP must not expose it: re-listing a gun somebody ended by
+		hand is a decision for the Serial No form, where the person can see why it
+		was ended. Sending nothing leaves the server on its safe default (0)."""
+		self.tools["gb_push_serial"]("SN1", confirm=True)
+		self.assertNotIn("relist", self._last()[2])
+
+	def test_gb_end_listing(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["gb_end_listing"]("SN1")
+		self.tools["gb_end_listing"]("SN1", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_integrations.gunbroker.client_api.end_listing_now",
+			{"serial_no": "SN1", "reason": None},
+		))
+		self.tools["gb_end_listing"]("SN1", confirm=True, reason="sold at the counter")
+		self.assertEqual(self._last()[2],
+			{"serial_no": "SN1", "reason": "sold at the counter"})
+
+	def test_gb_listing_status_read_only(self):
+		self.tools["gb_listing_status"]("SN1")
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_integrations.gunbroker.client_api.listing_status",
+			{"serial_no": "SN1"},
+		))
+
+	def test_gb_tools_pass_the_server_answer_through_verbatim(self):
+		"""The backend answers guard refusals with a skip dict and end_listing with
+		a confirmed/pending_manual shape. Both carry operational meaning ("the gun
+		can still be bought on GunBroker until somebody ends it by hand"), so the
+		wrapper must not reshape, summarise or drop keys."""
+		skip = {"ok": False, "skipped": "channel_reserved", "message": "held for GB-ORD-1"}
+		pending = {"ok": True, "strategy": "delete_endpoint", "confirmed": False,
+			"pending_manual": True, "gb_url": "https://gunbroker.test/item/1",
+			"message": "still buyable until ended by hand"}
+		for tool, args, kwargs, payload in (
+			("gb_push_serial", ("SN1",), {"confirm": True}, skip),
+			("gb_end_listing", ("SN1",), {"confirm": True}, pending),
+			("gb_listing_status", ("SN1",), {}, {"ok": True, "state": "sold_unknown"}),
+			("gb_test_connection", (), {}, {"ok": True, "sandbox": True}),
+		):
+			with patch.object(curated, "get_client") as gc:
+				gc.return_value.call_method.return_value = payload
+				self.assertEqual(self.tools[tool](*args, **kwargs), payload)
 
 	# ------------------------------------------- G: order / fulfillment queue
 
@@ -567,6 +635,8 @@ class CuratedTools(unittest.TestCase):
 			"push_serial_to_fastbound", "verify_supplier_ffl", "reverify_all_ffls",
 			"promote_to_item", "backfill_from_rsr", "set_serial_title",
 			"woo_push_serial", "woo_delist_serial",
+			# PR-4a: GunBroker listing-side channel
+			"gb_test_connection", "gb_push_serial", "gb_end_listing", "gb_listing_status",
 			"pending_orders", "pending_web_orders",
 			"dispose_order", "dispose_web_order", "record_payment",
 			"push_shipment", "mark_shipped_manually", "shipstation_test_connection",
@@ -584,11 +654,11 @@ class CuratedTools(unittest.TestCase):
 			self.assertIn(name, self.tools)
 
 	def test_curated_tool_count_pinned(self):
-		# This pins the CURATED bucket only. Total = 53 curated + 10 generic +
-		# 11 distributor + 5 reports = 79, pinned separately in
-		# test_modes.py::test_full_mode_registers_79_tools_including_the_cpa_18.
+		# This pins the CURATED bucket only. Total = 57 curated + 10 generic +
+		# 11 distributor + 5 reports = 83, pinned separately in
+		# test_modes.py::test_full_mode_registers_the_whole_surface_including_the_cpa_18.
 		# Moving either number means moving README.md, CLAUDE.md and TOOLS.md (x2).
-		self.assertEqual(len(self.tools), 53)
+		self.assertEqual(len(self.tools), 57)
 
 
 if __name__ == "__main__":

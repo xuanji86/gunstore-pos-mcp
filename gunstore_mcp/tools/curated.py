@@ -15,6 +15,7 @@ _SETTINGS = {
     "woocommerce": "WooCommerce Settings",
     "dealer": "Dealer WooCommerce Settings",
     "shipstation": "ShipStation Settings",
+    "gunbroker": "GunBroker Settings",
 }
 
 
@@ -31,7 +32,7 @@ def register(mcp: Any) -> None:
     @mcp.tool()
     def get_settings(which: str) -> Any:
         """Read an integration's Settings. which: ffl | fastbound | rsr | payroc |
-        woocommerce | dealer (dealer-portal WooCommerce) | shipstation.
+        woocommerce | dealer (dealer-portal WooCommerce) | shipstation | gunbroker.
         Password fields are never returned by Frappe."""
         dt = _resolve(which)
         return get_client().get_document(dt, dt)
@@ -39,7 +40,7 @@ def register(mcp: Any) -> None:
     @mcp.tool()
     def update_settings(which: str, values: dict) -> Any:
         """Update an integration's Settings. which: ffl | fastbound | rsr | payroc |
-        woocommerce | dealer (dealer-portal WooCommerce) | shipstation.
+        woocommerce | dealer (dealer-portal WooCommerce) | shipstation | gunbroker.
         Credential/password fields are stripped — set those in Desk."""
         dt = _resolve(which)
         clean, stripped = strip_passwords(dt, values)
@@ -133,6 +134,77 @@ def register(mcp: Any) -> None:
         Not yet live: it takes effect on the next push (woo_push_serial / woo_push_item).
         The field is fetch_if_empty so the value persists once set."""
         return get_client().update_document("Serial No", serial_no, {"item_name": title})
+
+    # ------------------------------------------------- GunBroker channel
+    #
+    # These reach GunBroker only through the POS: every one calls a whitelisted
+    # method in ffl_integrations, which owns the credentials, the listing guards
+    # and the sandbox/production choice. Nothing here talks to GunBroker
+    # directly, and nothing here can pick an environment — that is
+    # `GunBroker Settings.sandbox_mode` on the POS site this MCP is pointed at,
+    # and it is the only thing that decides whether a push reaches the real
+    # marketplace. Point the MCP at dev.localhost and you are on the sandbox.
+
+    @mcp.tool()
+    def gb_test_connection() -> Any:
+        """Probe the GunBroker API connection + credentials (read-only).
+        Reports which environment answered: the "sandbox" key in the reply is
+        true for api.sandbox.gunbroker.com, false for the real marketplace.
+        Read that key before doing anything else — it is how you find out which
+        GunBroker this POS is wired to."""
+        return get_client().call_method(
+            "ffl_integrations.gunbroker.client_api.test_connection"
+        )
+
+    @mcp.tool()
+    def gb_push_serial(serial_no: str, confirm: bool = False) -> Any:
+        """List ONE firearm on GunBroker as a fixed-price Buy Now, priced from
+        Serial No.sell_price. Publishes a gun for sale on a live marketplace —
+        confirm=true.
+
+        A refusal is a normal answer, not an error: guards come back as
+        {"ok": false, "skipped": "<reason>", "message": "<why>"} — e.g. the gun
+        is not in custody, has no price, is already listed, or is reserved by
+        another channel. Read the message and fix the cause; re-calling will not
+        change the answer. On success the reply carries "gb_item_id".
+
+        To re-list a gun that somebody ended by hand, use the Serial No form —
+        that lift is deliberately not available here."""
+        require_confirm(f"gb_push_serial {serial_no}", confirm)
+        return get_client().call_method(
+            "ffl_integrations.gunbroker.client_api.push_serial_now",
+            {"serial_no": serial_no},
+        )
+
+    @mcp.tool()
+    def gb_end_listing(serial_no: str, confirm: bool = False,
+                       reason: str | None = None) -> Any:
+        """End ONE gun's GunBroker listing (e.g. it just sold at the counter).
+        confirm=true. reason is optional and is recorded on the alert if the
+        listing cannot be ended automatically.
+
+        Check "confirmed" in the reply, not "ok". confirmed=true means GunBroker
+        was read back and the listing is inactive. Anything else comes with
+        "pending_manual": true and a "gb_url": the listing is STILL BUYABLE and a
+        person has to end it on the GunBroker site — say so plainly rather than
+        reporting the call as done."""
+        require_confirm(f"gb_end_listing {serial_no}", confirm)
+        return get_client().call_method(
+            "ffl_integrations.gunbroker.client_api.end_listing_now",
+            {"serial_no": serial_no, "reason": reason},
+        )
+
+    @mcp.tool()
+    def gb_listing_status(serial_no: str) -> Any:
+        """What this POS and GunBroker each think of ONE gun's listing
+        (read-only). "state" is the POS view — unlisted | push_pending | listed |
+        end_pending | sold | sold_unknown | ended — and "remote" is what
+        GunBroker says right now, or null when there is no listing to ask about.
+        Use this before pushing or ending anything if the two might disagree."""
+        return get_client().call_method(
+            "ffl_integrations.gunbroker.client_api.listing_status",
+            {"serial_no": serial_no},
+        )
 
     @mcp.tool()
     def atf_verify_ffl(ffl_number: str, confirm: bool = False) -> Any:
