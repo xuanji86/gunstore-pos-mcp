@@ -52,6 +52,26 @@
 firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原图太大会把 Woo
 推送搞超时），MCP 不做 resize。
 
+## 2b. 上架 / 下架（GunBroker —— 第三销售渠道）
+
+固定价 Buy Now，价取 `Serial No.sell_price`。**只按枪操作，没有"整型号推"这回事**——
+GunBroker 上一条 listing 就是一把枪。
+
+| 你想… | 工具 | confirm | 说明 |
+|---|---|---|---|
+| 上架**一把枪** | `gb_push_serial` | ✅ | 守卫拒绝会返回 `{"ok": false, "skipped": ..., "message": ...}`——**这是正常回答不是报错**，照 message 处理，重试不会变 |
+| 结束**一把枪**的 listing | `gb_end_listing` | ✅ | **看 `confirmed` 不是看 `ok`**：`confirmed=false` 一定带 `pending_manual` + `gb_url`，意思是**这把枪在 GunBroker 上还能被买走**，要人去站点上手动结束 |
+| 看一把枪的上架状态 | `gb_listing_status` | — | 只读；`state` 是 POS 视角（7 态），`remote` 是 GunBroker 当下的说法 |
+| 测试 GunBroker 连接 | `gb_test_connection` | — | 只读探活；**回包里的 `sandbox` 字段说明刚才打的是哪个环境** |
+
+**沙盒还是生产，这里选不了**：由目标 POS 站点的 `GunBroker Settings.sandbox_mode`
+唯一决定。这几个工具一律经 POS 的 whitelisted 方法走，凭据与环境都在 POS 那边，
+MCP 不直连 GunBroker。MCP 指向 `dev.localhost:8000` 就是沙盒；指向 prod 就是真的
+在往真市场上挂枪——`gb_push_serial` 前先用 `gb_test_connection` 看一眼 `sandbox`。
+
+**手动重挂**（人工结束过的枪要再上架）不在 MCP 面上：走 Serial No 表单，那里能看见
+当初为什么被结束。
+
 ## 3. 收货入库 / 库存调整
 
 | 你想… | 工具 | confirm | 说明 |
@@ -197,7 +217,7 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 
 ## 10. CPA 模式（只读会计面）+ 报表工具包
 
-**模式开关**：启动环境变量 `GUNSTORE_MCP_MODE=cpa`（默认 `full` = 全部 79 工具中默认注册 75（4 个分销商队列动作需显式开启），行为与以前完全一致；未知值直接拒绝启动，不会静默降级成可写）。cpa 模式给会计/CPA 用：**写面在工具列表里物理不存在**，不是"存在但会拒绝"。三层防御，缺一层其余仍兜底：
+**模式开关**：启动环境变量 `GUNSTORE_MCP_MODE=cpa`（默认 `full` = 全部 83 工具中默认注册 79（4 个分销商队列动作需显式开启），行为与以前完全一致；未知值直接拒绝启动，不会静默降级成可写）。cpa 模式给会计/CPA 用：**写面在工具列表里物理不存在**，不是"存在但会拒绝"。三层防御，缺一层其余仍兜底：
 
 1. **注册层**：tools/list 恰好 = 下面 18 个名字（集合相等，测试钉死）；
 2. **客户端层**：一切写方法 + 未逐一列名的点路径方法（`frappe_run_method` 整个不注册）→ `CpaModeRefused`；只读点路径 allowlist 逐一列名，禁通配；
@@ -247,5 +267,5 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 
 ---
 
-*工具总数 79（10 个通用 + 53 个专用 + 11 个分销商 + 5 个报表），默认注册 75（4 个分销商队列动作需 `GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1`）；`GUNSTORE_MCP_MODE=cpa` 只读模式恰注册其中 18 个。对应版本 v0.4.1；工具行为以 README.md
+*工具总数 83（10 个通用 + 57 个专用 + 11 个分销商 + 5 个报表），默认注册 79（4 个分销商队列动作需 `GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1`）；`GUNSTORE_MCP_MODE=cpa` 只读模式恰注册其中 18 个。对应版本 v0.4.1；工具行为以 README.md
 和源码 `gunstore_mcp/tools/` 为准。*
