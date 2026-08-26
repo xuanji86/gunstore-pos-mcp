@@ -12,6 +12,8 @@ gunstore-pos 平台的 MCP server 源码仓(83 工具 = 10 个通用 Frappe CRUD
 
 **`gb_push_serial` 为什么够格进这个闸**:它把一把真枪挂上公开拍卖行,买家可以在任何人发现之前拍下,撤下来要人去 GunBroker 站点手动做。`gb_end_listing` 是它的配对项——两者属同一个操作员决定,拆开会造成"能结束不能重挂"。
 
+**部署前置(lead 裁决,G5 清单)**:要用 GunBroker 渠道的实例**必须**设 `GUNSTORE_MCP_GUNBROKER_ACTIONS=1`。只开上架不开结束是最危险的配置——柜台卖掉后没人能结束 listing,而自动结束链路(`serial_channel_exit`)要到 PR-2/PR-3 才上线。
+
 ## 命令
 - 测试:`uv run --with pytest pytest`(pytest 不在项目依赖里,用 --with 注入)
 - 本地运行:`uv run gunstore-mcp`(需环境变量指向目标 Frappe 站点)
