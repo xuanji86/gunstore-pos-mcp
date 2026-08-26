@@ -64,10 +64,21 @@ GunBroker 上一条 listing 就是一把枪。
 | 看一把枪的上架状态 | `gb_listing_status` | — | 只读；`state` 是 POS 视角（7 态），`remote` 是 GunBroker 当下的说法 |
 | 测试 GunBroker 连接 | `gb_test_connection` | — | 只读探活；**回包里的 `sandbox` 字段说明刚才打的是哪个环境** |
 
-**沙盒还是生产，这里选不了**：由目标 POS 站点的 `GunBroker Settings.sandbox_mode`
-唯一决定。这几个工具一律经 POS 的 whitelisted 方法走，凭据与环境都在 POS 那边，
-MCP 不直连 GunBroker。MCP 指向 `dev.localhost:8000` 就是沙盒；指向 prod 就是真的
-在往真市场上挂枪——`gb_push_serial` 前先用 `gb_test_connection` 看一眼 `sandbox`。
+**沙盒还是生产，这里选不了**——而且是**真的**选不了，不只是「请不要」：由目标 POS 站点的
+`GunBroker Settings.sandbox_mode` 唯一决定，而这个字段**经 MCP 写不了**：
+`update_settings("gunbroker", {...})` 只要带上 `enabled` / `sandbox_mode` /
+`base_url_override` / `dev_key` / `sandbox_dev_key` / `username` / `password` /
+`end_strategy` / `check_deposit_account` / `card_checkout_enabled` 里的任何一个键，
+**整个调用直接拒绝**（不是剥掉那个键继续写——半个生效比全不生效更坏）。这些只能在
+desk UI 里由人改。工具本身也一律经 POS 的 whitelisted 方法走，MCP 不直连 GunBroker。
+
+**「本地站」不等于「沙盒」**。把 MCP 指向 `dev.localhost:8000`，你拿到的是**那个站点**的
+`sandbox_mode`——一个填了生产凭据的本地 dev 站照样能挂出真 listing。唯一可靠的确认方式是
+`gb_test_connection` 回包里的 `sandbox` 字段，`gb_push_serial` 之前先看一眼。
+
+**角色不同**：`gb_test_connection` 要 POS 上的 `SYSTEM_ROLES`，另外三个只要 `STOCK_ROLES`。
+只有库存类角色的 API 用户会**单单在这个探活工具上吃 403**——而它恰好是文档教你第一个调的，
+看到 403 先想这件事，别以为是连接坏了。
 
 **手动重挂**（人工结束过的枪要再上架）不在 MCP 面上：走 Serial No 表单，那里能看见
 当初为什么被结束。

@@ -146,8 +146,9 @@ claude mcp add gunstore-pos-cpa --scope user \
 | `woo_test_connection` / `woo_push_item` / `woo_delist_item` / `woo_reconcile` | store probe / list / delist / reconcile an Item — all take `site: retail\|dealer` (writes need `confirm`) |
 | `woo_push_serial` / `woo_delist_serial` | list / delist ONE gun (SKU `item_code::serial`; `site`; `confirm`) |
 | `set_serial_title` | per-gun Woo listing title (writes `Serial No.item_name`; takes effect on next push) |
-| `gb_test_connection` / `gb_listing_status` | GunBroker probe — the reply's `sandbox` flag says which marketplace answered / POS-vs-GunBroker view of ONE gun's listing (read-only) |
-| `gb_push_serial` / `gb_end_listing` | list ONE gun as a fixed-price Buy Now / end its listing (`confirm`; both reach GunBroker only via the POS, and `GunBroker Settings.sandbox_mode` on the target site is the only thing that picks sandbox vs live) |
+| **GunBroker channel** | *`update_settings` refuses the environment and credential fields of `GunBroker Settings` outright — sandbox vs live is a Desk change, not a tool call* |
+| `gb_test_connection` / `gb_listing_status` | GunBroker probe — the reply's `sandbox` flag says which marketplace answered (needs SYSTEM_ROLES; the other three need STOCK_ROLES) / POS-vs-GunBroker view of ONE gun's listing (read-only) |
+| `gb_push_serial` / `gb_end_listing` | list ONE gun as a fixed-price Buy Now / end its listing (`confirm`; both reach GunBroker only via the POS) |
 | `pending_orders` / `pending_web_orders` | the Pending Order queue: counter/dealer rows + paid web orders (read-only; consignments live in `consignment_queue`) |
 | `dispose_order` / `dispose_web_order` | book the FFL transfer dispositions — stock-out + FastBound push (`confirm`) |
 | `record_payment` | Payment Entry against an unpaid submitted invoice; Zelle needs `transaction_number` (`confirm`) |
