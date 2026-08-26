@@ -162,6 +162,37 @@ class EveryWritePath(unittest.TestCase):
                         self.tools["frappe_run_method"](method, kwargs)
                     self.assertEqual(len(self.client.calls), before)
 
+    def test_blocked_generic_mutators_are_still_refused(self):
+        """Regression for the layer that was already there: Frappe's own
+        document mutators are refused wholesale by _BLOCKED_GENERIC_METHODS,
+        independently of any field-name rule."""
+        for method in sorted(generic._BLOCKED_GENERIC_METHODS):
+            with self.subTest(method=method):
+                before = len(self.client.calls)
+                with self.assertRaises(WriteRefused):
+                    self.tools["frappe_run_method"](method, {"doctype": "Item"})
+                self.assertEqual(len(self.client.calls), before)
+
+    def test_the_blocked_list_does_not_cover_the_db_setters(self):
+        """Why check_method_call_writable exists as well.
+
+        _BLOCKED_GENERIC_METHODS is entirely frappe.client.* — it does NOT
+        contain frappe.db.set_single_value or frappe.db.set_value, which write
+        a Single's field just as effectively. Reviewed as "already blocked" once;
+        it is not, and this asserts the gap so the next reader can see it rather
+        than re-deriving it. If these names ever DO join the blocked list, this
+        test fails and the comment above it should be revisited — it will not
+        silently pretend to guard something."""
+        for method in ("frappe.db.set_single_value", "frappe.db.set_value"):
+            with self.subTest(method=method):
+                self.assertNotIn(method, generic._BLOCKED_GENERIC_METHODS)
+        # ...and they are refused anyway, by the field-name rule.
+        for method in ("frappe.db.set_single_value", "frappe.db.set_value"):
+            with self.subTest(method=method, via="field name"):
+                with self.assertRaises(WriteRefused):
+                    self.tools["frappe_run_method"](
+                        method, {"doctype": DT, "fieldname": "sandbox_mode", "value": 0})
+
     def test_ordinary_writes_still_work(self):
         """The guard must not become a blanket refusal on the doctype."""
         self.tools["frappe_update_document"](DT, DT, {"page_size": 50})
