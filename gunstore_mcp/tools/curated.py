@@ -2,8 +2,10 @@
 ops. Thin wrappers over the generic backbone + the apps' whitelisted methods."""
 from __future__ import annotations
 
+import os
 from typing import Any
 
+from ..config import _load_env
 from ..frappe_client import get_client
 from ..safety import (check_fields_writable, require_confirm, require_reason,
                       strip_passwords, stripped_note)
@@ -18,6 +20,25 @@ _SETTINGS = {
     "shipstation": "ShipStation Settings",
     "gunbroker": "GunBroker Settings",
 }
+
+
+GUNBROKER_ACTIONS_ENV = "GUNSTORE_MCP_GUNBROKER_ACTIONS"
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def gunbroker_actions_enabled() -> bool:
+    """Whether gb_push_serial / gb_end_listing are registered at all (default: NO).
+
+    Same shape and same reasoning as tools/distributor.py's ACTIONS_ENV: anything
+    not explicitly truthy leaves them off, so this is fail-closed by construction
+    and refusing to boot on a typo would cost availability and buy no safety.
+    Read through _load_env so it is set in mcp/.env like the mode and the
+    credentials, in the one place operators already look.
+
+    Independent of GUNSTORE_MCP_MODE, and turning it on does NOT add anything to
+    the cpa surface — the gb tools are not in CPA_TOOL_NAMES either way."""
+    _load_env()
+    return (os.environ.get(GUNBROKER_ACTIONS_ENV) or "").strip().lower() in _TRUTHY
 
 
 def _resolve(which: str) -> str:
@@ -174,44 +195,6 @@ def register(mcp: Any) -> None:
         )
 
     @mcp.tool()
-    def gb_push_serial(serial_no: str, confirm: bool = False) -> Any:
-        """List ONE firearm on GunBroker as a fixed-price Buy Now, priced from
-        Serial No.sell_price. Publishes a gun for sale on a live marketplace —
-        confirm=true.
-
-        A refusal is a normal answer, not an error: guards come back as
-        {"ok": false, "skipped": "<reason>", "message": "<why>"} — e.g. the gun
-        is not in custody, has no price, is already listed, or is reserved by
-        another channel. Read the message and fix the cause; re-calling will not
-        change the answer. On success the reply carries "gb_item_id".
-
-        To re-list a gun that somebody ended by hand, use the Serial No form —
-        that lift is deliberately not available here."""
-        require_confirm(f"gb_push_serial {serial_no}", confirm)
-        return get_client().call_method(
-            "ffl_integrations.gunbroker.client_api.push_serial_now",
-            {"serial_no": serial_no},
-        )
-
-    @mcp.tool()
-    def gb_end_listing(serial_no: str, confirm: bool = False,
-                       reason: str | None = None) -> Any:
-        """End ONE gun's GunBroker listing (e.g. it just sold at the counter).
-        confirm=true. reason is optional and is recorded on the alert if the
-        listing cannot be ended automatically.
-
-        Check "confirmed" in the reply, not "ok". confirmed=true means GunBroker
-        was read back and the listing is inactive. Anything else comes with
-        "pending_manual": true and a "gb_url": the listing is STILL BUYABLE and a
-        person has to end it on the GunBroker site — say so plainly rather than
-        reporting the call as done."""
-        require_confirm(f"gb_end_listing {serial_no}", confirm)
-        return get_client().call_method(
-            "ffl_integrations.gunbroker.client_api.end_listing_now",
-            {"serial_no": serial_no, "reason": reason},
-        )
-
-    @mcp.tool()
     def gb_listing_status(serial_no: str) -> Any:
         """What this POS and GunBroker each think of ONE gun's listing
         (read-only). "state" is the POS view — unlisted | push_pending | listed |
@@ -222,6 +205,65 @@ def register(mcp: Any) -> None:
             "ffl_integrations.gunbroker.client_api.listing_status",
             {"serial_no": serial_no},
         )
+
+    # ------------------------------------------------- GunBroker write actions
+    #
+    # OFF unless GUNSTORE_MCP_GUNBROKER_ACTIONS is explicitly truthy. Not
+    # registered at all rather than registered-and-refusing — the same stance
+    # tools/distributor.py:169-177 takes for the RSR queue actions, and for the
+    # same reason: a confirm= gate catches a misfire, but it does not catch an
+    # agent that has reasoned its way into believing it ought to confirm, and the
+    # user-level `gunstore-pos` instance really does point at prod. An absent
+    # tool cannot be reasoned about.
+    #
+    # gb_push_serial clears that bar: it puts a real firearm on a public
+    # marketplace where a buyer can commit before anyone notices, and pulling it
+    # back is a manual job on GunBroker's own site. gb_end_listing is here as its
+    # pair — the two belong to the same operator decision, and splitting them
+    # would leave someone able to end listings but not to restore one.
+    #
+    # Scoped `if`, not distributor.py's early `return`: that file's actions are
+    # the last thing it registers, ours are not — returning here would silently
+    # drop every tool defined below.
+    if gunbroker_actions_enabled():
+
+        @mcp.tool()
+        def gb_push_serial(serial_no: str, confirm: bool = False) -> Any:
+            """List ONE firearm on GunBroker as a fixed-price Buy Now, priced from
+            Serial No.sell_price. Publishes a gun for sale on a live marketplace —
+            confirm=true.
+
+            A refusal is a normal answer, not an error: guards come back as
+            {"ok": false, "skipped": "<reason>", "message": "<why>"} — e.g. the gun
+            is not in custody, has no price, is already listed, or is reserved by
+            another channel. Read the message and fix the cause; re-calling will not
+            change the answer. On success the reply carries "gb_item_id".
+
+            To re-list a gun that somebody ended by hand, use the Serial No form —
+            that lift is deliberately not available here."""
+            require_confirm(f"gb_push_serial {serial_no}", confirm)
+            return get_client().call_method(
+                "ffl_integrations.gunbroker.client_api.push_serial_now",
+                {"serial_no": serial_no},
+            )
+
+        @mcp.tool()
+        def gb_end_listing(serial_no: str, confirm: bool = False,
+                           reason: str | None = None) -> Any:
+            """End ONE gun's GunBroker listing (e.g. it just sold at the counter).
+            confirm=true. reason is optional and is recorded on the alert if the
+            listing cannot be ended automatically.
+
+            Check "confirmed" in the reply, not "ok". confirmed=true means GunBroker
+            was read back and the listing is inactive. Anything else comes with
+            "pending_manual": true and a "gb_url": the listing is STILL BUYABLE and a
+            person has to end it on the GunBroker site — say so plainly rather than
+            reporting the call as done."""
+            require_confirm(f"gb_end_listing {serial_no}", confirm)
+            return get_client().call_method(
+                "ffl_integrations.gunbroker.client_api.end_listing_now",
+                {"serial_no": serial_no, "reason": reason},
+            )
 
     @mcp.tool()
     def atf_verify_ffl(ffl_number: str, confirm: bool = False) -> Any:

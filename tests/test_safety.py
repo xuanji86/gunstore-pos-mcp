@@ -52,6 +52,38 @@ NOT_CREDENTIALS = ["key_dealer", "ftp_dir_keydealer", "sandbox_mode", "username"
 	"end_strategy", "base_url_override", "category_map", "page_size"]
 
 
+class CredentialNameRegex(unittest.TestCase):
+	"""The regex itself, asserted directly rather than only through
+	strip_passwords — it is the whole fallback when doctype meta is unavailable,
+	so it deserves to be pinned by name."""
+
+	def test_the_gunbroker_devkey_fields_are_matched(self):
+		"""The two names from review-pr4a M-1. Before this arm they were not
+		matched, and strip_passwords swallows a failed describe on purpose — so
+		one describe hiccup would have put a DevKey on the wire."""
+		for name in ("dev_key", "sandbox_dev_key"):
+			with self.subTest(name=name):
+				self.assertIsNotNone(safety._CREDENTIAL_NAME.search(name))
+
+	def test_devkey_spelled_without_a_separator_is_matched_too(self):
+		for name in ("devkey", "DevKey", "DEV-KEY"):
+			with self.subTest(name=name):
+				self.assertIsNotNone(safety._CREDENTIAL_NAME.search(name))
+
+	def test_every_platform_credential_name_is_matched(self):
+		for name, where in EVERY_CREDENTIAL_FIELD:
+			with self.subTest(name=name, doctype=where):
+				self.assertIsNotNone(safety._CREDENTIAL_NAME.search(name),
+					f"{name} ({where}) escapes the credential backstop")
+
+	def test_real_non_secret_key_names_are_not_matched(self):
+		"""RSR's key_dealer / ftp_dir_keydealer are a dealer tier. A backstop
+		wide enough to eat them would break legitimate writes."""
+		for name in NOT_CREDENTIALS:
+			with self.subTest(name=name):
+				self.assertIsNone(safety._CREDENTIAL_NAME.search(name))
+
+
 class CredentialBackstopWithoutMeta(unittest.TestCase):
 	"""The describe-failed path: meta contributes nothing, names are all we have."""
 

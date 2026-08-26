@@ -7,6 +7,7 @@ network / Frappe needed.
 """
 from __future__ import annotations
 
+import os
 import unittest
 from unittest.mock import patch
 
@@ -53,10 +54,27 @@ class FakeMCP:
 		return deco
 
 
+def _register(mcp, *, gb_actions: str | None):
+	"""Register curated with the GunBroker action gate set explicitly.
+
+	Never inherited from the ambient environment: a GUNSTORE_MCP_GUNBROKER_ACTIONS
+	sitting in a developer's shell or mcp/.env would otherwise decide whether the
+	write tools exist, and these assertions would pass or fail per machine."""
+	env = {k: v for k, v in os.environ.items() if k != curated.GUNBROKER_ACTIONS_ENV}
+	if gb_actions is not None:
+		env[curated.GUNBROKER_ACTIONS_ENV] = gb_actions
+	with patch.dict(os.environ, env, clear=True), \
+			patch.object(curated, "_load_env", lambda: None):
+		curated.register(mcp)
+	return mcp
+
+
 class CuratedTools(unittest.TestCase):
 	def setUp(self):
 		mcp = FakeMCP()
-		curated.register(mcp)
+		# Actions ON: this class asserts the shape of every tool, writes included.
+		# Whether they are registered by DEFAULT is pinned in GunBrokerActionGate.
+		_register(mcp, gb_actions="1")
 		self.tools = mcp.tools
 		self.client = FakeClient()
 		self._patch = patch.object(curated, "get_client", return_value=self.client)
@@ -686,11 +704,78 @@ class CuratedTools(unittest.TestCase):
 			self.assertIn(name, self.tools)
 
 	def test_curated_tool_count_pinned(self):
-		# This pins the CURATED bucket only. Total = 57 curated + 10 generic +
-		# 11 distributor + 5 reports = 83, pinned separately in
+		# This pins the CURATED bucket with the GunBroker actions ON. Total =
+		# 57 curated + 10 generic + 11 distributor + 5 reports = 83, pinned in
 		# test_modes.py::test_full_mode_registers_the_whole_surface_including_the_cpa_18.
-		# Moving either number means moving README.md, CLAUDE.md and TOOLS.md (x2).
+		# The DEFAULT surface is 2 lower here and 6 lower overall (both gates off).
+		# Moving any of these means moving README.md, CLAUDE.md and TOOLS.md.
 		self.assertEqual(len(self.tools), 57)
+
+
+class GunBrokerActionGate(unittest.TestCase):
+	"""gb_push_serial / gb_end_listing are not registered unless asked for.
+
+	confirm= catches a misfire. It does not catch an agent that has reasoned its
+	way into believing it ought to confirm — and the user-level instance really
+	does point at prod. An absent tool cannot be reasoned about
+	(tools/distributor.py:169-177, same stance).
+	"""
+	WRITES = ("gb_push_serial", "gb_end_listing")
+	READS = ("gb_test_connection", "gb_listing_status")
+
+	def _tools(self, gb_actions):
+		return _register(FakeMCP(), gb_actions=gb_actions).tools
+
+	def test_writes_are_absent_by_default(self):
+		tools = self._tools(None)
+		for name in self.WRITES:
+			self.assertNotIn(name, tools)
+
+	def test_reads_are_always_registered(self):
+		"""Only the irreversible half is gated. Looking at a listing, and asking
+		which GunBroker you are pointed at, must not need an opt-in — that is the
+		call you want someone to make BEFORE they reach for a write."""
+		for gb_actions in (None, "1"):
+			with self.subTest(gb_actions=gb_actions):
+				tools = self._tools(gb_actions)
+				for name in self.READS:
+					self.assertIn(name, tools)
+
+	def test_the_flag_registers_them(self):
+		tools = self._tools("1")
+		for name in self.WRITES:
+			self.assertIn(name, tools)
+
+	def test_truthy_spellings_accepted_anything_else_is_off(self):
+		"""Fail-closed by construction: unlike GUNSTORE_MCP_MODE this does not
+		refuse to boot on a typo, because anything unrecognised simply leaves the
+		writes off. Mirrors distributor.actions_enabled exactly."""
+		for value in ("1", "true", "TRUE", "yes", "on", " on "):
+			with self.subTest(on=value):
+				self.assertIn("gb_push_serial", self._tools(value))
+		for value in ("", "0", "no", "off", "false", "maybe", "2"):
+			with self.subTest(off=value):
+				self.assertNotIn("gb_push_serial", self._tools(value))
+
+	def test_gating_does_not_drop_the_tools_defined_after_it(self):
+		"""The gb block sits in the middle of register(), so an early `return`
+		here — the shape distributor.py can afford, since its actions are last —
+		would silently take out everything below it."""
+		off, on = self._tools(None), self._tools("1")
+		self.assertEqual(len(on) - len(off), len(self.WRITES))
+		for name in ("atf_verify_ffl", "firearms_in_stock", "upload_attachment",
+				"cancel_order", "update_consignment_prices"):
+			self.assertIn(name, off)
+
+	def test_writes_still_need_confirm_when_registered(self):
+		"""The gate replaces nothing: both layers apply."""
+		tools = self._tools("1")
+		client = FakeClient()
+		with patch.object(curated, "get_client", return_value=client):
+			for name in self.WRITES:
+				with self.subTest(name), self.assertRaises(WriteRefused):
+					tools[name]("SN1")
+			self.assertEqual(client.calls, [])
 
 
 if __name__ == "__main__":

@@ -24,17 +24,27 @@ from gunstore_mcp.modes import (
 	CpaModeRefused,
 	get_mode,
 )
-from gunstore_mcp.tools import distributor
+from gunstore_mcp.tools import curated, distributor
 
 
-def _actions(value):
-	"""Context manager controlling GUNSTORE_MCP_DISTRIBUTOR_ACTIONS (None = absent).
-	_load_env is stubbed so a developer's own mcp/.env cannot flip these assertions."""
-	env = {k: v for k, v in os.environ.items() if k != distributor.ACTIONS_ENV}
+_GATES = (distributor.ACTIONS_ENV, curated.GUNBROKER_ACTIONS_ENV)
+
+
+def _actions(value, gb=None):
+	"""Context manager controlling BOTH registration gates (None = absent):
+	GUNSTORE_MCP_DISTRIBUTOR_ACTIONS and GUNSTORE_MCP_GUNBROKER_ACTIONS.
+
+	Both are cleared before either is set, and _load_env is stubbed on both
+	modules, so a developer's own shell or mcp/.env cannot flip these
+	assertions — the surface under test has to be decided here, not inherited."""
+	env = {k: v for k, v in os.environ.items() if k not in _GATES}
 	if value is not None:
 		env[distributor.ACTIONS_ENV] = value
+	if gb is not None:
+		env[curated.GUNBROKER_ACTIONS_ENV] = gb
 	return _Both(patch.dict(os.environ, env, clear=True),
-		patch.object(distributor, "_load_env", lambda: None))
+		patch.object(distributor, "_load_env", lambda: None),
+		patch.object(curated, "_load_env", lambda: None))
 
 
 class _Both:
@@ -106,31 +116,53 @@ class RegistrationLayer(unittest.TestCase):
 		self.assertEqual(set(mcp.tools), EXPECTED_CPA_TOOLS)
 		self.assertEqual(len(mcp.tools), 18)
 
-	def test_default_full_mode_holds_the_four_queue_actions_back(self):
-		"""Default full mode is 79, not 83: the distributor queue actions require an
-		explicit opt-in. Pinned separately from the full surface so that turning the
-		gate into a no-op would break a test rather than quietly restore the old
-		surface."""
+	def test_default_full_mode_holds_both_opt_in_sets_back(self):
+		"""Default full mode is 77, not 83: the 4 distributor queue actions and the
+		2 GunBroker write actions each require an explicit opt-in. Pinned separately
+		from the full surface so that turning either gate into a no-op would break a
+		test rather than quietly restore the wider surface."""
 		mcp = FakeMCP()
 		with _actions(None):
 			server.register_tools(mcp, mode="full")
-		self.assertEqual(len(mcp.tools), 79)
+		self.assertEqual(len(mcp.tools), 77)
 		for name in ("distributor_confirm_order", "distributor_cancel_order",
-				"distributor_reroute", "distributor_update_order_ffl"):
+				"distributor_reroute", "distributor_update_order_ffl",
+				"gb_push_serial", "gb_end_listing"):
 			self.assertNotIn(name, mcp.tools)
+		# the read halves are never gated
+		for name in ("gb_test_connection", "gb_listing_status"):
+			self.assertIn(name, mcp.tools)
 
-	def test_the_actions_flag_cannot_widen_cpa_mode(self):
-		"""The two switches are independent, and cpa is the stricter one: opting into
-		the queue actions must not add a single tool to the accountant surface."""
+	def test_the_two_gates_are_independent(self):
+		"""Opting into one must not turn on the other."""
 		mcp = FakeMCP()
-		with _actions("1"):
+		with _actions("1", gb=None):
+			server.register_tools(mcp, mode="full")
+		self.assertIn("distributor_confirm_order", mcp.tools)
+		self.assertNotIn("gb_push_serial", mcp.tools)
+
+		mcp = FakeMCP()
+		with _actions(None, gb="1"):
+			server.register_tools(mcp, mode="full")
+		self.assertNotIn("distributor_confirm_order", mcp.tools)
+		self.assertIn("gb_push_serial", mcp.tools)
+
+	def test_the_actions_flags_cannot_widen_cpa_mode(self):
+		"""cpa is the strictest switch: opting into EITHER action set must not add a
+		single tool to the accountant surface. In particular gb_push_serial must not
+		appear just because somebody set the GunBroker flag on a cpa instance."""
+		mcp = FakeMCP()
+		with _actions("1", gb="1"):
 			server.register_tools(mcp, mode="cpa")
 		self.assertEqual(set(mcp.tools), EXPECTED_CPA_TOOLS)
 		self.assertEqual(len(mcp.tools), 18)
+		for name in ("gb_push_serial", "gb_end_listing", "gb_test_connection",
+				"gb_listing_status"):
+			self.assertNotIn(name, mcp.tools)
 
 	def test_full_mode_registers_the_whole_surface_including_the_cpa_18(self):
 		mcp = FakeMCP()
-		with _actions("1"):
+		with _actions("1", gb="1"):
 			server.register_tools(mcp, mode="full")
 		self.assertEqual(len(mcp.tools), 83)
 		self.assertTrue(EXPECTED_CPA_TOOLS <= set(mcp.tools))

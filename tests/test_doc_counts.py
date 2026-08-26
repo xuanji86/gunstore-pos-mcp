@@ -43,35 +43,49 @@ class _FakeMCP:
         return deco
 
 
-def _count(module, *, actions: str | None = None) -> int:
-    env = {k: v for k, v in os.environ.items() if k != distributor.ACTIONS_ENV}
+_GATES = (distributor.ACTIONS_ENV, curated.GUNBROKER_ACTIONS_ENV)
+
+
+def _count(module, *, actions: str | None = None, gb_actions: str | None = None) -> int:
+    # Both registration gates are cleared first, then set explicitly. A stray
+    # GUNSTORE_MCP_* in the developer's shell must not be able to decide what
+    # "the live surface" is, or these counts would differ per machine.
+    env = {k: v for k, v in os.environ.items() if k not in _GATES}
     if actions is not None:
         env[distributor.ACTIONS_ENV] = actions
+    if gb_actions is not None:
+        env[curated.GUNBROKER_ACTIONS_ENV] = gb_actions
     mcp = _FakeMCP()
     # _load_env stubbed for the same reason as in test_distributor: a developer's own
     # mcp/.env must not be able to decide what "the live surface" is here, or this
     # guard would pass or fail depending on whose machine it runs on.
     with patch.dict(os.environ, env, clear=True), \
-            patch.object(distributor, "_load_env", lambda: None):
+            patch.object(distributor, "_load_env", lambda: None), \
+            patch.object(curated, "_load_env", lambda: None):
         module.register(mcp)
     return len(mcp.tools)
 
 
 def _live() -> dict:
     generic_n = _count(generic)
-    curated_n = _count(curated)
     reports_n = _count(reports)
+    cur_on = _count(curated, gb_actions="1")
+    cur_off = _count(curated, gb_actions=None)
     dist_on = _count(distributor, actions="1")
     dist_off = _count(distributor, actions=None)
     return {
         "generic": generic_n,
-        "curated": curated_n,
+        "curated": cur_on,
+        "curated_default": cur_off,
+        "gb_actions": cur_on - cur_off,
+        # the GunBroker reads, which are NOT gated (4 gb_ tools minus the 2 writes)
+        "gb_readonly": 4 - (cur_on - cur_off),
         "reports": reports_n,
         "distributor": dist_on,
         "distributor_default": dist_off,
         "actions": dist_on - dist_off,
-        "total": generic_n + curated_n + dist_on + reports_n,
-        "default": generic_n + curated_n + dist_off + reports_n,
+        "total": generic_n + cur_on + dist_on + reports_n,
+        "default": generic_n + cur_off + dist_off + reports_n,
         "cpa_surface": len(CPA_TOOL_NAMES),
     }
 
@@ -105,6 +119,11 @@ CLAIMS = [
     ("TOOLS.md", r"恰注册其中 (\d+) 个", "cpa_surface"),
     ("TOOLS.md", r"只读 (\d+)", "distributor_default"),
     ("TOOLS.md", r"动作 (\d+)", "actions"),
+    # GunBroker buckets. Deliberately NOT phrased "只读 N" / "动作 N": those two
+    # patterns match every occurrence in the file, so reusing the wording in §2b
+    # would make the GunBroker numbers get checked against the distributor's.
+    ("TOOLS.md", r"GunBroker 只读工具 (\d+)", "gb_readonly"),
+    ("TOOLS.md", r"GunBroker 写工具 (\d+)", "gb_actions"),
 ]
 
 # "12 tools", "12-tool", "12 工具", "12 个工具"
@@ -141,7 +160,19 @@ class ExactClaims(unittest.TestCase):
         L = self.live
         self.assertEqual(
             L["total"], L["generic"] + L["curated"] + L["distributor"] + L["reports"])
-        self.assertEqual(L["default"], L["total"] - L["actions"])
+        # Two independent registration gates now, so the default surface is the
+        # total less BOTH opt-in sets.
+        self.assertEqual(L["default"], L["total"] - L["actions"] - L["gb_actions"])
+        self.assertEqual(L["curated"], L["curated_default"] + L["gb_actions"])
+
+    def test_both_registration_gates_actually_hold_something_back(self):
+        """A gate that gates nothing is the failure mode these counts exist to
+        catch: turn either one into a no-op and the arithmetic above still
+        balances, because everything would simply always be registered."""
+        L = self.live
+        self.assertEqual(L["actions"], 4)
+        self.assertEqual(L["gb_actions"], 2)
+        self.assertEqual(L["gb_readonly"], 2)
 
 
 class NoStaleCountAnywhere(unittest.TestCase):
