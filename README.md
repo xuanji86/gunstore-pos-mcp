@@ -146,7 +146,7 @@ claude mcp add gunstore-pos-cpa --scope user \
 | `woo_test_connection` / `woo_push_item` / `woo_delist_item` / `woo_reconcile` | store probe / list / delist / reconcile an Item — all take `site: retail\|dealer` (writes need `confirm`) |
 | `woo_push_serial` / `woo_delist_serial` | list / delist ONE gun (SKU `item_code::serial`; `site`; `confirm`) |
 | `set_serial_title` | per-gun Woo listing title (writes `Serial No.item_name`; takes effect on next push) |
-| **GunBroker channel** | *`update_settings` refuses the environment and credential fields of `GunBroker Settings` outright — sandbox vs live is a Desk change, not a tool call. The 2 writes below need `GUNSTORE_MCP_GUNBROKER_ACTIONS=1` to be registered at all* |
+| **GunBroker channel** | *the environment, credential and money fields of `GunBroker Settings` are refused on every write path — `update_settings`, `frappe_update_document`, `frappe_create_document` and `frappe_run_method` alike, enforced by a test over the whole registered surface. Sandbox vs live is a Desk change, not a tool call. The 2 writes below need `GUNSTORE_MCP_GUNBROKER_ACTIONS=1` to be registered at all* |
 | `gb_test_connection` / `gb_listing_status` | GunBroker probe — the reply's `sandbox` flag says which marketplace answered (needs SYSTEM_ROLES; the other three need STOCK_ROLES) / POS-vs-GunBroker view of ONE gun's listing (read-only) |
 | `gb_push_serial` / `gb_end_listing` | list ONE gun as a fixed-price Buy Now / end its listing (opt-in via `GUNSTORE_MCP_GUNBROKER_ACTIONS=1`, then `confirm`; both reach GunBroker only via the POS) |
 | `pending_orders` / `pending_web_orders` | the Pending Order queue: counter/dealer rows + paid web orders (read-only; consignments live in `consignment_queue`) |

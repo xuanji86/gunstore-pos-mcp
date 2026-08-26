@@ -70,13 +70,19 @@ GunBroker 上一条 listing 就是一把枪。
 | 看一把枪的上架状态 | `gb_listing_status` | — | 只读；`state` 是 POS 视角（7 态），`remote` 是 GunBroker 当下的说法 |
 | 测试 GunBroker 连接 | `gb_test_connection` | — | 只读探活；**回包里的 `sandbox` 字段说明刚才打的是哪个环境** |
 
-**沙盒还是生产，这里选不了**——而且是**真的**选不了，不只是「请不要」：由目标 POS 站点的
-`GunBroker Settings.sandbox_mode` 唯一决定，而这个字段**经 MCP 写不了**：
-`update_settings("gunbroker", {...})` 只要带上 `enabled` / `sandbox_mode` /
+**沙盒还是生产，这里选不了**：由目标 POS 站点的 `GunBroker Settings.sandbox_mode` 唯一决定，
+而这个字段**经 MCP 的任何一条写路都写不进去**——`enabled` / `sandbox_mode` /
 `base_url_override` / `dev_key` / `sandbox_dev_key` / `username` / `password` /
-`end_strategy` / `check_deposit_account` / `card_checkout_enabled` 里的任何一个键，
-**整个调用直接拒绝**（不是剥掉那个键继续写——半个生效比全不生效更坏）。这些只能在
-desk UI 里由人改。工具本身也一律经 POS 的 whitelisted 方法走，MCP 不直连 GunBroker。
+`end_strategy` / `check_deposit_account` / `card_checkout_enabled` 这十个键，带上任何一个，
+`update_settings` / `frappe_update_document` / `frappe_create_document` 以及
+`frappe_run_method` 的字段 setter **整个调用直接拒绝**（不是剥掉那个键继续写——
+半个生效比全不生效更坏）。这些只能在 desk UI 里由人改。
+
+「任何一条写路」是有测试兜着的说法,不是口号:`tests/test_never_writes_surface.py`
+遍历已注册工具逐个喂禁写键,并且**静态断言任何写文档体的新工具都必须过这道守卫**。
+上一版这句话在只堵住一条路的时候就已经这么写了——**那比不写更糟,因为人会照着它行动**。
+
+工具本身也一律经 POS 的 whitelisted 方法走，MCP 不直连 GunBroker。
 
 **「本地站」不等于「沙盒」**。把 MCP 指向 `dev.localhost:8000`，你拿到的是**那个站点**的
 `sandbox_mode`——一个填了生产凭据的本地 dev 站照样能挂出真 listing。唯一可靠的确认方式是
