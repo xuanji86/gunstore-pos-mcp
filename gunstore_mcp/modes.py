@@ -10,7 +10,7 @@ surface with three independent defence layers (each fails closed on its own):
      mode, and dotted methods are checked against CPA_METHOD_ALLOWLIST —
      names listed one by one, NO prefix wildcards, NO HTTP-verb heuristics
      (run_report rides POST-adjacent /api/method GET; verbs prove nothing).
-  3. Settings reads: the 7 integration Settings doctypes refuse get/list in
+  3. Settings reads: the 8 integration Settings doctypes refuse get/list in
      cpa mode — Password masking is a framework behaviour, not this repo's
      guarantee, and the config surface has no accounting purpose.
 
@@ -85,6 +85,10 @@ CPA_SETTINGS_READ_BLOCKLIST: frozenset[str] = frozenset({
     "WooCommerce Settings",
     "Dealer WooCommerce Settings",
     "ShipStation Settings",
+    # Holds the GunBroker DevKey and the seller account password. Reading it has
+    # no accounting purpose, and Password masking is a framework behaviour rather
+    # than a guarantee this repo makes.
+    "GunBroker Settings",
 })
 
 

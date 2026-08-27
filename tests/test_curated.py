@@ -7,6 +7,7 @@ network / Frappe needed.
 """
 from __future__ import annotations
 
+import os
 import unittest
 from unittest.mock import patch
 
@@ -53,10 +54,27 @@ class FakeMCP:
 		return deco
 
 
+def _register(mcp, *, gb_actions: str | None):
+	"""Register curated with the GunBroker action gate set explicitly.
+
+	Never inherited from the ambient environment: a GUNSTORE_MCP_GUNBROKER_ACTIONS
+	sitting in a developer's shell or mcp/.env would otherwise decide whether the
+	write tools exist, and these assertions would pass or fail per machine."""
+	env = {k: v for k, v in os.environ.items() if k != curated.GUNBROKER_ACTIONS_ENV}
+	if gb_actions is not None:
+		env[curated.GUNBROKER_ACTIONS_ENV] = gb_actions
+	with patch.dict(os.environ, env, clear=True), \
+			patch.object(curated, "_load_env", lambda: None):
+		curated.register(mcp)
+	return mcp
+
+
 class CuratedTools(unittest.TestCase):
 	def setUp(self):
 		mcp = FakeMCP()
-		curated.register(mcp)
+		# Actions ON: this class asserts the shape of every tool, writes included.
+		# Whether they are registered by DEFAULT is pinned in GunBrokerActionGate.
+		_register(mcp, gb_actions="1")
 		self.tools = mcp.tools
 		self.client = FakeClient()
 		self._patch = patch.object(curated, "get_client", return_value=self.client)
@@ -216,6 +234,43 @@ class CuratedTools(unittest.TestCase):
 
 	# ------------------------------------------ E: settings map additions
 
+	def test_get_settings_gunbroker(self):
+		self.tools["get_settings"]("gunbroker")
+		self.assertEqual(self._last(), (
+			"get_document", "GunBroker Settings", "GunBroker Settings"))
+
+	def test_update_settings_gunbroker_refuses_the_environment_switch(self):
+		"""Without this the chain is: flip sandbox_mode with no confirm at all,
+		then one confirm=true push, and a real gun is on the real marketplace —
+		while three places in this repo claim the environment can't be chosen here.
+		Refused outright, and nothing reaches the client."""
+		for values in ({"sandbox_mode": 0}, {"enabled": 1},
+				{"base_url_override": "https://api.gunbroker.com/v1"},
+				{"dev_key": "leaked"}, {"password": "leaked"}, {"username": "someone"},
+				{"end_strategy": "Manual Only"}, {"card_checkout_enabled": 1},
+				{"check_deposit_account": "Some Bank - OSA"},
+				{"page_size": 50, "sandbox_mode": 0}):
+			with self.subTest(values=values):
+				before = len(self.client.calls)
+				with self.assertRaises(WriteRefused):
+					self.tools["update_settings"]("gunbroker", values)
+				self.assertEqual(len(self.client.calls), before,
+					"refused write still reached the client")
+
+	def test_update_settings_gunbroker_allows_the_ordinary_fields(self):
+		self.tools["update_settings"]("gunbroker", {"page_size": 50, "max_pictures": 8})
+		self.assertEqual(self._last(), (
+			"update_document", "GunBroker Settings", "GunBroker Settings",
+			{"page_size": 50, "max_pictures": 8},
+		))
+
+	def test_update_settings_other_doctypes_are_not_narrowed(self):
+		"""The never-writes rule is GunBroker-only on purpose; widening it to the
+		other seven Settings is a separate decision, not a side effect."""
+		self.tools["update_settings"]("woocommerce", {"enabled": 1})
+		self.assertEqual(self._last()[:3],
+			("update_document", "WooCommerce Settings", "WooCommerce Settings"))
+
 	def test_get_settings_shipstation_and_dealer(self):
 		self.tools["get_settings"]("shipstation")
 		self.assertEqual(self._last(), (
@@ -279,6 +334,69 @@ class CuratedTools(unittest.TestCase):
 			"call_method", "ffl_woo_sync.woocommerce.client_api.delist_serial_now",
 			{"serial_no": "SN1", "site": "dealer"},
 		))
+
+	# ------------------------------------------------- F2: GunBroker channel
+
+	def test_gb_test_connection_read_only(self):
+		self.tools["gb_test_connection"]()
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_integrations.gunbroker.client_api.test_connection", {},
+		))
+
+	def test_gb_push_serial(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["gb_push_serial"]("SN1")
+		self.tools["gb_push_serial"]("SN1", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_integrations.gunbroker.client_api.push_serial_now",
+			{"serial_no": "SN1"},
+		))
+
+	def test_gb_push_serial_never_sends_relist(self):
+		"""push_serial_now takes a `relist` flag that lifts the manually-ended
+		sentinel. The MCP must not expose it: re-listing a gun somebody ended by
+		hand is a decision for the Serial No form, where the person can see why it
+		was ended. Sending nothing leaves the server on its safe default (0)."""
+		self.tools["gb_push_serial"]("SN1", confirm=True)
+		self.assertNotIn("relist", self._last()[2])
+
+	def test_gb_end_listing(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["gb_end_listing"]("SN1")
+		self.tools["gb_end_listing"]("SN1", confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_integrations.gunbroker.client_api.end_listing_now",
+			{"serial_no": "SN1", "reason": None},
+		))
+		self.tools["gb_end_listing"]("SN1", confirm=True, reason="sold at the counter")
+		self.assertEqual(self._last()[2],
+			{"serial_no": "SN1", "reason": "sold at the counter"})
+
+	def test_gb_listing_status_read_only(self):
+		self.tools["gb_listing_status"]("SN1")
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_integrations.gunbroker.client_api.listing_status",
+			{"serial_no": "SN1"},
+		))
+
+	def test_gb_tools_pass_the_server_answer_through_verbatim(self):
+		"""The backend answers guard refusals with a skip dict and end_listing with
+		a confirmed/pending_manual shape. Both carry operational meaning ("the gun
+		can still be bought on GunBroker until somebody ends it by hand"), so the
+		wrapper must not reshape, summarise or drop keys."""
+		skip = {"ok": False, "skipped": "channel_reserved", "message": "held for GB-ORD-1"}
+		pending = {"ok": True, "strategy": "delete_endpoint", "confirmed": False,
+			"pending_manual": True, "gb_url": "https://gunbroker.test/item/1",
+			"message": "still buyable until ended by hand"}
+		for tool, args, kwargs, payload in (
+			("gb_push_serial", ("SN1",), {"confirm": True}, skip),
+			("gb_end_listing", ("SN1",), {"confirm": True}, pending),
+			("gb_listing_status", ("SN1",), {}, {"ok": True, "state": "sold_unknown"}),
+			("gb_test_connection", (), {}, {"ok": True, "sandbox": True}),
+		):
+			with patch.object(curated, "get_client") as gc:
+				gc.return_value.call_method.return_value = payload
+				self.assertEqual(self.tools[tool](*args, **kwargs), payload)
 
 	# ------------------------------------------- G: order / fulfillment queue
 
@@ -567,6 +685,8 @@ class CuratedTools(unittest.TestCase):
 			"push_serial_to_fastbound", "verify_supplier_ffl", "reverify_all_ffls",
 			"promote_to_item", "backfill_from_rsr", "set_serial_title",
 			"woo_push_serial", "woo_delist_serial",
+			# PR-4a: GunBroker listing-side channel
+			"gb_test_connection", "gb_push_serial", "gb_end_listing", "gb_listing_status",
 			"pending_orders", "pending_web_orders",
 			"dispose_order", "dispose_web_order", "record_payment",
 			"push_shipment", "mark_shipped_manually", "shipstation_test_connection",
@@ -584,11 +704,78 @@ class CuratedTools(unittest.TestCase):
 			self.assertIn(name, self.tools)
 
 	def test_curated_tool_count_pinned(self):
-		# This pins the CURATED bucket only. Total = 53 curated + 10 generic +
-		# 11 distributor + 5 reports = 79, pinned separately in
-		# test_modes.py::test_full_mode_registers_79_tools_including_the_cpa_18.
-		# Moving either number means moving README.md, CLAUDE.md and TOOLS.md (x2).
-		self.assertEqual(len(self.tools), 53)
+		# This pins the CURATED bucket with the GunBroker actions ON. Total =
+		# 57 curated + 10 generic + 11 distributor + 5 reports = 83, pinned in
+		# test_modes.py::test_full_mode_registers_the_whole_surface_including_the_cpa_18.
+		# The DEFAULT surface is 2 lower here and 6 lower overall (both gates off).
+		# Moving any of these means moving README.md, CLAUDE.md and TOOLS.md.
+		self.assertEqual(len(self.tools), 57)
+
+
+class GunBrokerActionGate(unittest.TestCase):
+	"""gb_push_serial / gb_end_listing are not registered unless asked for.
+
+	confirm= catches a misfire. It does not catch an agent that has reasoned its
+	way into believing it ought to confirm — and the user-level instance really
+	does point at prod. An absent tool cannot be reasoned about
+	(tools/distributor.py:169-177, same stance).
+	"""
+	WRITES = ("gb_push_serial", "gb_end_listing")
+	READS = ("gb_test_connection", "gb_listing_status")
+
+	def _tools(self, gb_actions):
+		return _register(FakeMCP(), gb_actions=gb_actions).tools
+
+	def test_writes_are_absent_by_default(self):
+		tools = self._tools(None)
+		for name in self.WRITES:
+			self.assertNotIn(name, tools)
+
+	def test_reads_are_always_registered(self):
+		"""Only the irreversible half is gated. Looking at a listing, and asking
+		which GunBroker you are pointed at, must not need an opt-in — that is the
+		call you want someone to make BEFORE they reach for a write."""
+		for gb_actions in (None, "1"):
+			with self.subTest(gb_actions=gb_actions):
+				tools = self._tools(gb_actions)
+				for name in self.READS:
+					self.assertIn(name, tools)
+
+	def test_the_flag_registers_them(self):
+		tools = self._tools("1")
+		for name in self.WRITES:
+			self.assertIn(name, tools)
+
+	def test_truthy_spellings_accepted_anything_else_is_off(self):
+		"""Fail-closed by construction: unlike GUNSTORE_MCP_MODE this does not
+		refuse to boot on a typo, because anything unrecognised simply leaves the
+		writes off. Mirrors distributor.actions_enabled exactly."""
+		for value in ("1", "true", "TRUE", "yes", "on", " on "):
+			with self.subTest(on=value):
+				self.assertIn("gb_push_serial", self._tools(value))
+		for value in ("", "0", "no", "off", "false", "maybe", "2"):
+			with self.subTest(off=value):
+				self.assertNotIn("gb_push_serial", self._tools(value))
+
+	def test_gating_does_not_drop_the_tools_defined_after_it(self):
+		"""The gb block sits in the middle of register(), so an early `return`
+		here — the shape distributor.py can afford, since its actions are last —
+		would silently take out everything below it."""
+		off, on = self._tools(None), self._tools("1")
+		self.assertEqual(len(on) - len(off), len(self.WRITES))
+		for name in ("atf_verify_ffl", "firearms_in_stock", "upload_attachment",
+				"cancel_order", "update_consignment_prices"):
+			self.assertIn(name, off)
+
+	def test_writes_still_need_confirm_when_registered(self):
+		"""The gate replaces nothing: both layers apply."""
+		tools = self._tools("1")
+		client = FakeClient()
+		with patch.object(curated, "get_client", return_value=client):
+			for name in self.WRITES:
+				with self.subTest(name), self.assertRaises(WriteRefused):
+					tools[name]("SN1")
+			self.assertEqual(client.calls, [])
 
 
 if __name__ == "__main__":

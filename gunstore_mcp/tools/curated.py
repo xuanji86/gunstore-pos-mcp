@@ -2,10 +2,13 @@
 ops. Thin wrappers over the generic backbone + the apps' whitelisted methods."""
 from __future__ import annotations
 
+import os
 from typing import Any
 
+from ..config import _load_env
 from ..frappe_client import get_client
-from ..safety import require_confirm, require_reason, strip_passwords, stripped_note
+from ..safety import (check_fields_writable, require_confirm, require_reason,
+                      strip_passwords, stripped_note)
 
 _SETTINGS = {
     "ffl": "FFL Settings",
@@ -15,7 +18,27 @@ _SETTINGS = {
     "woocommerce": "WooCommerce Settings",
     "dealer": "Dealer WooCommerce Settings",
     "shipstation": "ShipStation Settings",
+    "gunbroker": "GunBroker Settings",
 }
+
+
+GUNBROKER_ACTIONS_ENV = "GUNSTORE_MCP_GUNBROKER_ACTIONS"
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def gunbroker_actions_enabled() -> bool:
+    """Whether gb_push_serial / gb_end_listing are registered at all (default: NO).
+
+    Same shape and same reasoning as tools/distributor.py's ACTIONS_ENV: anything
+    not explicitly truthy leaves them off, so this is fail-closed by construction
+    and refusing to boot on a typo would cost availability and buy no safety.
+    Read through _load_env so it is set in mcp/.env like the mode and the
+    credentials, in the one place operators already look.
+
+    Independent of GUNSTORE_MCP_MODE, and turning it on does NOT add anything to
+    the cpa surface — the gb tools are not in CPA_TOOL_NAMES either way."""
+    _load_env()
+    return (os.environ.get(GUNBROKER_ACTIONS_ENV) or "").strip().lower() in _TRUTHY
 
 
 def _resolve(which: str) -> str:
@@ -31,7 +54,7 @@ def register(mcp: Any) -> None:
     @mcp.tool()
     def get_settings(which: str) -> Any:
         """Read an integration's Settings. which: ffl | fastbound | rsr | payroc |
-        woocommerce | dealer (dealer-portal WooCommerce) | shipstation.
+        woocommerce | dealer (dealer-portal WooCommerce) | shipstation | gunbroker.
         Password fields are never returned by Frappe."""
         dt = _resolve(which)
         return get_client().get_document(dt, dt)
@@ -39,9 +62,14 @@ def register(mcp: Any) -> None:
     @mcp.tool()
     def update_settings(which: str, values: dict) -> Any:
         """Update an integration's Settings. which: ffl | fastbound | rsr | payroc |
-        woocommerce | dealer (dealer-portal WooCommerce) | shipstation.
-        Credential/password fields are stripped — set those in Desk."""
+        woocommerce | dealer (dealer-portal WooCommerce) | shipstation | gunbroker.
+        Credential/password fields are stripped — set those in Desk.
+        On gunbroker the environment, credential and money fields are refused
+        outright (enabled, sandbox_mode, base_url_override, dev_key,
+        sandbox_dev_key, username, password, end_strategy, check_deposit_account,
+        card_checkout_enabled) — the call fails rather than half-applying."""
         dt = _resolve(which)
+        check_fields_writable(dt, values)
         clean, stripped = strip_passwords(dt, values)
         return stripped_note(get_client().update_document(dt, dt, clean), stripped)
 
@@ -132,7 +160,124 @@ def register(mcp: Any) -> None:
         physical gun its own title instead of the model name shared by every serial.
         Not yet live: it takes effect on the next push (woo_push_serial / woo_push_item).
         The field is fetch_if_empty so the value persists once set."""
-        return get_client().update_document("Serial No", serial_no, {"item_name": title})
+        # No-op for Serial No today: the rule is that EVERY tool writing a
+        # document body passes through the guard, so the set of writers and the
+        # set of guarded writers stay identical and a new tool cannot quietly
+        # become the exception. Enforced by tests/test_never_writes_surface.py.
+        values = {"item_name": title}
+        check_fields_writable("Serial No", values)
+        return get_client().update_document("Serial No", serial_no, values)
+
+    # ------------------------------------------------- GunBroker channel
+    #
+    # These reach GunBroker only through the POS: every one calls a whitelisted
+    # method in ffl_integrations, which owns the credentials, the listing guards
+    # and the sandbox/production choice. Nothing here talks to GunBroker
+    # directly.
+    #
+    # Which GunBroker gets contacted is `GunBroker Settings.sandbox_mode` on the
+    # POS site this MCP points at. That field is refused on every write path
+    # this server has — update_settings, frappe_update_document,
+    # frappe_create_document, and frappe_run_method's field setters all raise
+    # (safety.MCP_NEVER_WRITES). It is changed in Desk, by a person.
+    #
+    # "Every write path" is a claim with a test behind it rather than a promise:
+    # tests/test_never_writes_surface.py enumerates the registered tools, drives
+    # each writer with a forbidden payload, and fails if a new tool ever writes
+    # a document body without the guard. The earlier version of this comment
+    # said the same thing when only ONE path was covered, which is worse than
+    # saying nothing — people act on it.
+    #
+    # Roles differ: gb_test_connection needs SYSTEM_ROLES on the POS, the other
+    # three need STOCK_ROLES. An API user with only stock roles gets a 403 from
+    # the probe and nothing else — worth knowing, since the probe is the one
+    # these docs tell you to call first.
+
+    @mcp.tool()
+    def gb_test_connection() -> Any:
+        """Probe the GunBroker API connection + credentials (read-only).
+        Reports which environment answered: the "sandbox" key in the reply is
+        true for api.sandbox.gunbroker.com, false for the real marketplace.
+        Read that key before doing anything else — it is how you find out which
+        GunBroker this POS is wired to. It cannot be changed from this server:
+        every write path refuses sandbox_mode, so switching environment is a
+        Desk change made by a person.
+        Needs SYSTEM_ROLES on the POS — the other three gb_ tools need only
+        STOCK_ROLES, so a stock-only API user sees a 403 here alone."""
+        return get_client().call_method(
+            "ffl_integrations.gunbroker.client_api.test_connection"
+        )
+
+    @mcp.tool()
+    def gb_listing_status(serial_no: str) -> Any:
+        """What this POS and GunBroker each think of ONE gun's listing
+        (read-only). "state" is the POS view — unlisted | push_pending | listed |
+        end_pending | sold | sold_unknown | ended — and "remote" is what
+        GunBroker says right now, or null when there is no listing to ask about.
+        Use this before pushing or ending anything if the two might disagree."""
+        return get_client().call_method(
+            "ffl_integrations.gunbroker.client_api.listing_status",
+            {"serial_no": serial_no},
+        )
+
+    # ------------------------------------------------- GunBroker write actions
+    #
+    # OFF unless GUNSTORE_MCP_GUNBROKER_ACTIONS is explicitly truthy. Not
+    # registered at all rather than registered-and-refusing — the same stance
+    # tools/distributor.py:169-177 takes for the RSR queue actions, and for the
+    # same reason: a confirm= gate catches a misfire, but it does not catch an
+    # agent that has reasoned its way into believing it ought to confirm, and the
+    # user-level `gunstore-pos` instance really does point at prod. An absent
+    # tool cannot be reasoned about.
+    #
+    # gb_push_serial clears that bar: it puts a real firearm on a public
+    # marketplace where a buyer can commit before anyone notices, and pulling it
+    # back is a manual job on GunBroker's own site. gb_end_listing is here as its
+    # pair — the two belong to the same operator decision, and splitting them
+    # would leave someone able to end listings but not to restore one.
+    #
+    # Scoped `if`, not distributor.py's early `return`: that file's actions are
+    # the last thing it registers, ours are not — returning here would silently
+    # drop every tool defined below.
+    if gunbroker_actions_enabled():
+
+        @mcp.tool()
+        def gb_push_serial(serial_no: str, confirm: bool = False) -> Any:
+            """List ONE firearm on GunBroker as a fixed-price Buy Now, priced from
+            Serial No.sell_price. Publishes a gun for sale on a live marketplace —
+            confirm=true.
+
+            A refusal is a normal answer, not an error: guards come back as
+            {"ok": false, "skipped": "<reason>", "message": "<why>"} — e.g. the gun
+            is not in custody, has no price, is already listed, or is reserved by
+            another channel. Read the message and fix the cause; re-calling will not
+            change the answer. On success the reply carries "gb_item_id".
+
+            To re-list a gun that somebody ended by hand, use the Serial No form —
+            that lift is deliberately not available here."""
+            require_confirm(f"gb_push_serial {serial_no}", confirm)
+            return get_client().call_method(
+                "ffl_integrations.gunbroker.client_api.push_serial_now",
+                {"serial_no": serial_no},
+            )
+
+        @mcp.tool()
+        def gb_end_listing(serial_no: str, confirm: bool = False,
+                           reason: str | None = None) -> Any:
+            """End ONE gun's GunBroker listing (e.g. it just sold at the counter).
+            confirm=true. reason is optional and is recorded on the alert if the
+            listing cannot be ended automatically.
+
+            Check "confirmed" in the reply, not "ok". confirmed=true means GunBroker
+            was read back and the listing is inactive. Anything else comes with
+            "pending_manual": true and a "gb_url": the listing is STILL BUYABLE and a
+            person has to end it on the GunBroker site — say so plainly rather than
+            reporting the call as done."""
+            require_confirm(f"gb_end_listing {serial_no}", confirm)
+            return get_client().call_method(
+                "ffl_integrations.gunbroker.client_api.end_listing_now",
+                {"serial_no": serial_no, "reason": reason},
+            )
 
     @mcp.tool()
     def atf_verify_ffl(ffl_number: str, confirm: bool = False) -> Any:

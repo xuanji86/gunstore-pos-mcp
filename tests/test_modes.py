@@ -4,7 +4,7 @@ Layer 1 — registration: GUNSTORE_MCP_MODE=cpa registers EXACTLY the 18-name
 allowlist (set equality, per spec acceptance #1 — not merely "no write tools").
 Layer 2 — client: mutating client methods + non-allowlisted dotted methods
 raise CpaModeRefused before any HTTP.
-Layer 3 — the 7 integration Settings doctypes refuse get/list reads in cpa mode.
+Layer 3 — the 8 integration Settings doctypes refuse get/list reads in cpa mode.
 Full mode must behave exactly as before (no refusals); its size is pinned below and
 in tests/test_doc_counts.py rather than restated here in prose, because a number
 written into a docstring is exactly the kind that goes stale unnoticed.
@@ -24,17 +24,27 @@ from gunstore_mcp.modes import (
 	CpaModeRefused,
 	get_mode,
 )
-from gunstore_mcp.tools import distributor
+from gunstore_mcp.tools import curated, distributor
 
 
-def _actions(value):
-	"""Context manager controlling GUNSTORE_MCP_DISTRIBUTOR_ACTIONS (None = absent).
-	_load_env is stubbed so a developer's own mcp/.env cannot flip these assertions."""
-	env = {k: v for k, v in os.environ.items() if k != distributor.ACTIONS_ENV}
+_GATES = (distributor.ACTIONS_ENV, curated.GUNBROKER_ACTIONS_ENV)
+
+
+def _actions(value, gb=None):
+	"""Context manager controlling BOTH registration gates (None = absent):
+	GUNSTORE_MCP_DISTRIBUTOR_ACTIONS and GUNSTORE_MCP_GUNBROKER_ACTIONS.
+
+	Both are cleared before either is set, and _load_env is stubbed on both
+	modules, so a developer's own shell or mcp/.env cannot flip these
+	assertions — the surface under test has to be decided here, not inherited."""
+	env = {k: v for k, v in os.environ.items() if k not in _GATES}
 	if value is not None:
 		env[distributor.ACTIONS_ENV] = value
+	if gb is not None:
+		env[curated.GUNBROKER_ACTIONS_ENV] = gb
 	return _Both(patch.dict(os.environ, env, clear=True),
-		patch.object(distributor, "_load_env", lambda: None))
+		patch.object(distributor, "_load_env", lambda: None),
+		patch.object(curated, "_load_env", lambda: None))
 
 
 class _Both:
@@ -82,6 +92,9 @@ EXPECTED_METHOD_ALLOWLIST = {
 SETTINGS_DOCTYPES = {
 	"FFL Settings", "FastBound Settings", "RSR Settings", "Payroc Settings",
 	"WooCommerce Settings", "Dealer WooCommerce Settings", "ShipStation Settings",
+	# PR-4a: holds the GunBroker DevKey + seller password (Password fields), and
+	# has no accounting purpose — same reasoning as every other row here.
+	"GunBroker Settings",
 }
 
 
@@ -103,32 +116,55 @@ class RegistrationLayer(unittest.TestCase):
 		self.assertEqual(set(mcp.tools), EXPECTED_CPA_TOOLS)
 		self.assertEqual(len(mcp.tools), 18)
 
-	def test_default_full_mode_holds_the_four_queue_actions_back(self):
-		"""Default full mode is 75, not 79: the distributor queue actions require an
-		explicit opt-in. Pinned separately from the 79 so that turning the gate into a
-		no-op would break a test rather than quietly restore the old surface."""
+	def test_default_full_mode_holds_both_opt_in_sets_back(self):
+		"""Default full mode is 77, not 83: the 4 distributor queue actions and the
+		2 GunBroker write actions each require an explicit opt-in. Pinned separately
+		from the full surface so that turning either gate into a no-op would break a
+		test rather than quietly restore the wider surface."""
 		mcp = FakeMCP()
 		with _actions(None):
 			server.register_tools(mcp, mode="full")
-		self.assertEqual(len(mcp.tools), 75)
+		self.assertEqual(len(mcp.tools), 77)
 		for name in ("distributor_confirm_order", "distributor_cancel_order",
-				"distributor_reroute", "distributor_update_order_ffl"):
+				"distributor_reroute", "distributor_update_order_ffl",
+				"gb_push_serial", "gb_end_listing"):
 			self.assertNotIn(name, mcp.tools)
+		# the read halves are never gated
+		for name in ("gb_test_connection", "gb_listing_status"):
+			self.assertIn(name, mcp.tools)
 
-	def test_the_actions_flag_cannot_widen_cpa_mode(self):
-		"""The two switches are independent, and cpa is the stricter one: opting into
-		the queue actions must not add a single tool to the accountant surface."""
+	def test_the_two_gates_are_independent(self):
+		"""Opting into one must not turn on the other."""
 		mcp = FakeMCP()
-		with _actions("1"):
+		with _actions("1", gb=None):
+			server.register_tools(mcp, mode="full")
+		self.assertIn("distributor_confirm_order", mcp.tools)
+		self.assertNotIn("gb_push_serial", mcp.tools)
+
+		mcp = FakeMCP()
+		with _actions(None, gb="1"):
+			server.register_tools(mcp, mode="full")
+		self.assertNotIn("distributor_confirm_order", mcp.tools)
+		self.assertIn("gb_push_serial", mcp.tools)
+
+	def test_the_actions_flags_cannot_widen_cpa_mode(self):
+		"""cpa is the strictest switch: opting into EITHER action set must not add a
+		single tool to the accountant surface. In particular gb_push_serial must not
+		appear just because somebody set the GunBroker flag on a cpa instance."""
+		mcp = FakeMCP()
+		with _actions("1", gb="1"):
 			server.register_tools(mcp, mode="cpa")
 		self.assertEqual(set(mcp.tools), EXPECTED_CPA_TOOLS)
 		self.assertEqual(len(mcp.tools), 18)
+		for name in ("gb_push_serial", "gb_end_listing", "gb_test_connection",
+				"gb_listing_status"):
+			self.assertNotIn(name, mcp.tools)
 
-	def test_full_mode_registers_79_tools_including_the_cpa_18(self):
+	def test_full_mode_registers_the_whole_surface_including_the_cpa_18(self):
 		mcp = FakeMCP()
-		with _actions("1"):
+		with _actions("1", gb="1"):
 			server.register_tools(mcp, mode="full")
-		self.assertEqual(len(mcp.tools), 79)
+		self.assertEqual(len(mcp.tools), 83)
 		self.assertTrue(EXPECTED_CPA_TOOLS <= set(mcp.tools))
 		# regression: none of the write faces leaked out of full mode
 		for name in ("frappe_run_method", "dispose_order", "receive_goods",
@@ -146,6 +182,9 @@ class RegistrationLayer(unittest.TestCase):
 			"rsr_catalog_search",
 			"rsr_test_connection", "fastbound_test_connection",
 			"woo_test_connection", "shipstation_test_connection",
+			# PR-4a: the GunBroker channel is a sales surface, not an accounting one;
+			# two of these write to a live marketplace.
+			"gb_test_connection", "gb_push_serial", "gb_end_listing", "gb_listing_status",
 			"dispose_order", "receive_goods", "cancel_order",
 			"ship_consignment_out", "create_consignment_out",
 		):
@@ -154,7 +193,7 @@ class RegistrationLayer(unittest.TestCase):
 	def test_method_allowlist_is_exactly_the_nine_names(self):
 		self.assertEqual(set(CPA_METHOD_ALLOWLIST), EXPECTED_METHOD_ALLOWLIST)
 
-	def test_settings_blocklist_is_exactly_the_seven_doctypes(self):
+	def test_settings_blocklist_is_exactly_the_eight_doctypes(self):
 		self.assertEqual(set(CPA_SETTINGS_READ_BLOCKLIST), SETTINGS_DOCTYPES)
 
 
