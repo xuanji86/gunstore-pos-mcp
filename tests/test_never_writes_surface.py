@@ -26,9 +26,10 @@ import unittest
 from unittest.mock import patch
 
 from gunstore_mcp import config as config_mod
-from gunstore_mcp import safety
+from gunstore_mcp import safety, server
+from gunstore_mcp.frappe_client import get_client
 from gunstore_mcp.safety import MCP_NEVER_WRITES, WriteRefused
-from gunstore_mcp.tools import curated, generic
+from gunstore_mcp.tools import curated, distributor, generic, reports
 
 DT = "GunBroker Settings"
 FORBIDDEN = sorted(MCP_NEVER_WRITES[DT])
@@ -101,17 +102,41 @@ def _creds():
     return ctx
 
 
+# The modules server.register_tools() registers, in its order. Kept as a tuple
+# rather than inlined so test_the_surface_covers_every_module_the_server_registers
+# can compare it against server.py itself: this file's claim to describe "the whole
+# registered surface" is only as good as this list, and it was wrong once already
+# (generic + curated only, while the server registers four — an unguarded writer
+# dropped into distributor.py went unnoticed by the static check below).
+_SURFACE_MODULES = (generic, curated, distributor, reports)
+
+
 def _surface():
-    """Every tool a full-mode server registers, both action gates open — the
-    widest surface this server can ever present."""
+    """Every tool a full-mode server registers, BOTH action gates open — the
+    widest surface this server can ever present.
+
+    Both gates are cleared out of the ambient environment before being set, so a
+    GUNSTORE_MCP_* in the developer's shell cannot decide how wide "widest" is:
+    with distributor's gate left to the ambient value, "widest" was whatever the
+    developer happened to have exported."""
     mcp = FakeMCP()
-    env = dict(os.environ)
+    env = {k: v for k, v in os.environ.items()
+           if k not in (curated.GUNBROKER_ACTIONS_ENV, distributor.ACTIONS_ENV)}
     env[curated.GUNBROKER_ACTIONS_ENV] = "1"
+    env[distributor.ACTIONS_ENV] = "1"
     with patch.dict(os.environ, env, clear=True), \
-            patch.object(curated, "_load_env", lambda: None):
-        generic.register(mcp)
-        curated.register(mcp)
+            patch.object(curated, "_load_env", lambda: None), \
+            patch.object(distributor, "_load_env", lambda: None):
+        for module in _SURFACE_MODULES:
+            module.register(mcp)
     return mcp.tools
+
+
+def _unguarded_probe(mcp):
+    """A write tool with no guard — the thing the static check must catch."""
+    @mcp.tool()
+    def probe_unguarded_writer(doctype: str, values: dict):
+        return get_client().update_document(doctype, "x", values)
 
 
 class EveryWritePath(unittest.TestCase):
@@ -208,6 +233,45 @@ class EveryWritePath(unittest.TestCase):
         self.assertEqual(self.client.calls[-1][1], "WooCommerce Settings")
 
 
+WRITER_CALLS = ("create_document", "update_document")
+
+
+def _called(fn):
+    """Names of functions/methods this tool calls, in source order.
+
+    Parsed, not grepped: the guard call sits next to a comment explaining
+    that it must precede strip_passwords, and a substring search finds the
+    comment. Order assertions on text would be measuring prose."""
+    tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+    out = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            f = node.func
+            name = getattr(f, "attr", None) or getattr(f, "id", None)
+            if name:
+                out.append((node.lineno, node.col_offset, name))
+    return [n for _, _, n in sorted(out)]
+
+
+def _writers(tools=None):
+    """{tool name: calls it makes} for every tool that writes a document body."""
+    found = {}
+    for name, fn in sorted((tools if tools is not None else _surface()).items()):
+        try:
+            calls = _called(fn)
+        except OSError:  # pragma: no cover
+            continue
+        if any(w in calls for w in WRITER_CALLS):
+            found[name] = calls
+    return found
+
+
+def _unguarded(tools=None):
+    """The tools that write a document body without calling the guard."""
+    return [n for n, calls in _writers(tools).items()
+            if "check_fields_writable" not in calls]
+
+
 class NoNewToolCanForget(unittest.TestCase):
     """Static: any tool that can write a document body must call the guard.
 
@@ -215,39 +279,11 @@ class NoNewToolCanForget(unittest.TestCase):
     one reads the source of every registered tool, so a new write tool fails
     here on the day it is written rather than in a review two rounds later."""
 
-    WRITERS = ("create_document", "update_document")
-
-    @staticmethod
-    def _called(fn):
-        """Names of functions/methods this tool calls, in source order.
-
-        Parsed, not grepped: the guard call sits next to a comment explaining
-        that it must precede strip_passwords, and a substring search finds the
-        comment. Order assertions on text would be measuring prose."""
-        tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
-        out = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                f = node.func
-                name = getattr(f, "attr", None) or getattr(f, "id", None)
-                if name:
-                    out.append((node.lineno, node.col_offset, name))
-        return [n for _, _, n in sorted(out)]
-
     def _writers(self):
-        found = {}
-        for name, fn in sorted(_surface().items()):
-            try:
-                calls = self._called(fn)
-            except OSError:  # pragma: no cover
-                continue
-            if any(w in calls for w in self.WRITERS):
-                found[name] = calls
-        return found
+        return _writers()
 
     def test_every_document_writer_calls_check_fields_writable(self):
-        missing = [n for n, calls in self._writers().items()
-                   if "check_fields_writable" not in calls]
+        missing = _unguarded()
         self.assertEqual(missing, [], (
             "these tools write a document body without calling "
             "check_fields_writable(doctype, values) — add it BEFORE "
@@ -265,7 +301,7 @@ class NoNewToolCanForget(unittest.TestCase):
                     f"{name} strips credentials before checking them")
 
     def test_run_method_is_guarded_too(self):
-        calls = self._called(_surface()["frappe_run_method"])
+        calls = _called(_surface()["frappe_run_method"])
         self.assertIn("check_method_call_writable", calls)
 
     def test_this_test_is_actually_looking_at_something(self):
@@ -277,6 +313,66 @@ class NoNewToolCanForget(unittest.TestCase):
         for expected in ("frappe_create_document", "frappe_update_document",
                 "update_settings", "set_serial_title"):
             self.assertIn(expected, writers)
+
+
+class TheSurfaceIsTheWholeSurface(unittest.TestCase):
+    """m-1 (review-pr4a-r3): the static check above is only as wide as _surface().
+
+    It used to enumerate two of the four modules server.py registers, so the same
+    unguarded writer was caught in curated.py and waved through in distributor.py.
+    Nothing was exploitable — neither distributor.py nor reports.py writes a
+    document body today — but a guard whose docstring says "every tool" and whose
+    body reads half of them is a claim that will be believed and is not true.
+
+    Two assertions, because they fail differently: one pins the module list to
+    server.py so a fifth module cannot be added without this file following, and
+    one mutates each module in turn to show the check would actually name the
+    offender wherever it is defined."""
+
+    @staticmethod
+    def _modules_server_registers():
+        """The `X.register(...)` calls in server.register_tools, read from source."""
+        tree = ast.parse(textwrap.dedent(inspect.getsource(server.register_tools)))
+        return sorted({
+            node.func.value.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "register" and isinstance(node.func.value, ast.Name)
+        })
+
+    def test_the_surface_covers_every_module_the_server_registers(self):
+        expected = self._modules_server_registers()
+        self.assertTrue(expected, "no X.register(...) found — server.py was restructured")
+        self.assertEqual(
+            sorted(m.__name__.rsplit(".", 1)[-1] for m in _SURFACE_MODULES), expected,
+            "_SURFACE_MODULES no longer matches server.register_tools — the "
+            "never-writes check would silently stop covering part of the server")
+
+    def test_the_widest_surface_really_contains_all_four_buckets(self):
+        """Reading the module list off server.py proves nothing if registering them
+        yields nothing; name one tool that can only come from each bucket, and both
+        opt-in sets, so an unset gate cannot shrink this surface unnoticed."""
+        tools = _surface()
+        for name in ("frappe_run_method", "update_settings", "distributor_route_queue",
+                     "sales_report", "gb_push_serial", "distributor_confirm_order"):
+            self.assertIn(name, tools)
+
+    def test_an_unguarded_writer_is_named_no_matter_which_module_defines_it(self):
+        """The mutation. Drop the same guard-less write tool into each registered
+        module and require test_every_document_writer_calls_check_fields_writable's
+        own predicate to name it. Before the fix this passed for generic/curated and
+        FAILED for distributor/reports — measured, not assumed."""
+        self.assertEqual(_unguarded(), [], "baseline is not clean")
+        for module in _SURFACE_MODULES:
+            with self.subTest(module=module.__name__):
+                real = module.register
+
+                def patched(mcp, _real=real):
+                    _real(mcp)
+                    _unguarded_probe(mcp)
+
+                with patch.object(module, "register", patched):
+                    self.assertIn("probe_unguarded_writer", _unguarded())
 
 
 if __name__ == "__main__":

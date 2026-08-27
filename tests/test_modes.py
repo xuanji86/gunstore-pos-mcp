@@ -117,8 +117,8 @@ class RegistrationLayer(unittest.TestCase):
 		self.assertEqual(len(mcp.tools), 18)
 
 	def test_default_full_mode_holds_both_opt_in_sets_back(self):
-		"""Default full mode is 77, not 83: the 4 distributor queue actions and the
-		2 GunBroker write actions each require an explicit opt-in. Pinned separately
+		"""Default full mode is 77, not 84: the 4 distributor queue actions and the
+		3 GunBroker write actions each require an explicit opt-in. Pinned separately
 		from the full surface so that turning either gate into a no-op would break a
 		test rather than quietly restore the wider surface."""
 		mcp = FakeMCP()
@@ -127,7 +127,7 @@ class RegistrationLayer(unittest.TestCase):
 		self.assertEqual(len(mcp.tools), 77)
 		for name in ("distributor_confirm_order", "distributor_cancel_order",
 				"distributor_reroute", "distributor_update_order_ffl",
-				"gb_push_serial", "gb_end_listing"):
+				"gb_push_serial", "gb_end_listing", "gb_pull_orders"):
 			self.assertNotIn(name, mcp.tools)
 		# the read halves are never gated
 		for name in ("gb_test_connection", "gb_listing_status"):
@@ -156,15 +156,15 @@ class RegistrationLayer(unittest.TestCase):
 			server.register_tools(mcp, mode="cpa")
 		self.assertEqual(set(mcp.tools), EXPECTED_CPA_TOOLS)
 		self.assertEqual(len(mcp.tools), 18)
-		for name in ("gb_push_serial", "gb_end_listing", "gb_test_connection",
-				"gb_listing_status"):
+		for name in ("gb_push_serial", "gb_end_listing", "gb_pull_orders",
+				"gb_test_connection", "gb_listing_status"):
 			self.assertNotIn(name, mcp.tools)
 
 	def test_full_mode_registers_the_whole_surface_including_the_cpa_18(self):
 		mcp = FakeMCP()
 		with _actions("1", gb="1"):
 			server.register_tools(mcp, mode="full")
-		self.assertEqual(len(mcp.tools), 83)
+		self.assertEqual(len(mcp.tools), 84)
 		self.assertTrue(EXPECTED_CPA_TOOLS <= set(mcp.tools))
 		# regression: none of the write faces leaked out of full mode
 		for name in ("frappe_run_method", "dispose_order", "receive_goods",
@@ -182,9 +182,11 @@ class RegistrationLayer(unittest.TestCase):
 			"rsr_catalog_search",
 			"rsr_test_connection", "fastbound_test_connection",
 			"woo_test_connection", "shipstation_test_connection",
-			# PR-4a: the GunBroker channel is a sales surface, not an accounting one;
-			# two of these write to a live marketplace.
+			# PR-4a/4b: the GunBroker channel is a sales surface, not an accounting
+			# one; three of these write (two to a live marketplace, one starts the
+			# order poll that creates POS documents and reserves guns).
 			"gb_test_connection", "gb_push_serial", "gb_end_listing", "gb_listing_status",
+			"gb_pull_orders",
 			"dispose_order", "receive_goods", "cancel_order",
 			"ship_consignment_out", "create_consignment_out",
 		):

@@ -27,7 +27,13 @@ _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
 
 def gunbroker_actions_enabled() -> bool:
-    """Whether gb_push_serial / gb_end_listing are registered at all (default: NO).
+    """Whether the GunBroker WRITE tools are registered at all (default: NO).
+
+    Which tools those are is the `if gunbroker_actions_enabled():` block in
+    register() — deliberately not listed here. This docstring named two of them
+    while the block held three, which is the same failure the block itself
+    exists to talk about: the description of a guard drifting wider or narrower
+    than the guard. A pointer cannot go stale; a list has now tried twice.
 
     Same shape and same reasoning as tools/distributor.py's ACTIONS_ENV: anything
     not explicitly truthy leaves them off, so this is fail-closed by construction
@@ -39,6 +45,30 @@ def gunbroker_actions_enabled() -> bool:
     the cpa surface — the gb tools are not in CPA_TOOL_NAMES either way."""
     _load_env()
     return (os.environ.get(GUNBROKER_ACTIONS_ENV) or "").strip().lower() in _TRUTHY
+
+
+# The whole answer sync_orders_now() gives. Recognised by exact key set, not by
+# "does it have a queued key": the note below asserts the reply carries no counts,
+# and that would become a lie the moment the server started sending some. An
+# unrecognised shape is passed through untouched — no note is better than a wrong
+# one, and the docstring still says what a queue receipt means.
+_QUEUE_RECEIPT = frozenset({"queued"})
+
+_QUEUED_NOTE = (
+    "QUEUED, not run: the poll happens in the background, so this reply says "
+    "nothing about how many orders were pulled, created or flagged — do not "
+    "report orders as synced on the strength of it. The job is de-duplicated "
+    "against the scheduled poll, so this joins one already running rather than "
+    "starting a second. Read the outcome from the GunBroker Order list and the "
+    "Error Log."
+)
+
+
+def _queue_receipt_note(result: Any) -> Any:
+    """Add the 'this is only a receipt' note to a bare {"queued": true}."""
+    if isinstance(result, dict) and set(result) == _QUEUE_RECEIPT and result["queued"]:
+        return {**result, "note": _QUEUED_NOTE}
+    return result
 
 
 def _resolve(which: str) -> str:
@@ -186,12 +216,16 @@ def register(mcp: Any) -> None:
     # each writer with a forbidden payload, and fails if a new tool ever writes
     # a document body without the guard. The earlier version of this comment
     # said the same thing when only ONE path was covered, which is worse than
-    # saying nothing — people act on it.
+    # saying nothing — people act on it. "The registered tools" now means all
+    # four modules server.py registers, pinned against server.py itself — it
+    # used to mean two of them, so the same missing guard was caught here and
+    # waved through in distributor.py.
     #
-    # Roles differ: gb_test_connection needs SYSTEM_ROLES on the POS, the other
-    # three need STOCK_ROLES. An API user with only stock roles gets a 403 from
-    # the probe and nothing else — worth knowing, since the probe is the one
-    # these docs tell you to call first.
+    # Roles differ: gb_test_connection and gb_pull_orders need SYSTEM_ROLES on
+    # the POS; gb_push_serial / gb_end_listing / gb_listing_status need only
+    # STOCK_ROLES. An API user with only stock roles gets a 403 from those two
+    # and nothing else — worth knowing, since the probe is the one these docs
+    # tell you to call first.
 
     @mcp.tool()
     def gb_test_connection() -> Any:
@@ -236,6 +270,14 @@ def register(mcp: Any) -> None:
     # pair — the two belong to the same operator decision, and splitting them
     # would leave someone able to end listings but not to restore one.
     #
+    # gb_pull_orders is the third, and it is the one whose name argues against
+    # its placement: "pull orders" sounds like a read. The test is consequence,
+    # not verb — importing an order writes POS documents and reserves the gun it
+    # names, so a poll run against the wrong environment, or after somebody
+    # rewound GunBroker Settings.orders_since_override, reserves stock nobody
+    # bought. The scheduled poll does this on its own; what the gate withholds
+    # is an agent's ability to start one on a hunch.
+    #
     # Scoped `if`, not distributor.py's early `return`: that file's actions are
     # the last thing it registers, ours are not — returning here would silently
     # drop every tool defined below.
@@ -278,6 +320,32 @@ def register(mcp: Any) -> None:
                 "ffl_integrations.gunbroker.client_api.end_listing_now",
                 {"serial_no": serial_no, "reason": reason},
             )
+
+        @mcp.tool()
+        def gb_pull_orders(confirm: bool = False) -> Any:
+            """Run the GunBroker order poll NOW instead of waiting for the
+            schedule. confirm=true.
+
+            Gated and confirm-guarded despite reading orders, because of what
+            importing one does: it creates POS documents and RESERVES the guns
+            the orders name. A poll started against the wrong environment, or
+            after somebody rewound the watermark, reserves stock nobody sold.
+
+            The reply is a receipt, not a result: {"queued": true} means the job
+            was accepted, and it says nothing about how many orders arrived. It
+            de-duplicates against the scheduled poll, so calling it while one is
+            running joins that run. Look at the GunBroker Order list and the
+            Error Log for what it actually did — and if you are not sure which
+            marketplace this POS is wired to, gb_test_connection first.
+
+            Takes no arguments on purpose: the poll window comes from
+            GunBroker Settings, and rewinding it (orders_since_override) re-imports
+            old orders — a Desk decision, not a tool call. Needs SYSTEM_ROLES on
+            the POS, like gb_test_connection."""
+            require_confirm("gb_pull_orders", confirm)
+            return _queue_receipt_note(get_client().call_method(
+                "ffl_integrations.gunbroker.client_api.sync_orders_now"
+            ))
 
     @mcp.tool()
     def atf_verify_ffl(ffl_number: str, confirm: bool = False) -> Any:
