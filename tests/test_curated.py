@@ -379,6 +379,54 @@ class CuratedTools(unittest.TestCase):
 			{"serial_no": "SN1"},
 		))
 
+	def test_gb_pull_orders(self):
+		with self.assertRaises(WriteRefused):
+			self.tools["gb_pull_orders"]()
+		self.tools["gb_pull_orders"](confirm=True)
+		self.assertEqual(self._last(), (
+			"call_method", "ffl_integrations.gunbroker.client_api.sync_orders_now", {},
+		))
+
+	def test_gb_pull_orders_sends_no_arguments(self):
+		"""sync_orders_now() takes none, and the watermark is deliberately not
+		reachable from here: GunBroker Settings.orders_since_override is what
+		rewinds the poll window, and rewinding it re-imports old orders and
+		re-reserves the guns they name. That is a Desk decision."""
+		self.tools["gb_pull_orders"](confirm=True)
+		self.assertEqual(self._last()[2], {})
+
+	def test_gb_pull_orders_says_the_answer_is_only_a_queue_receipt(self):
+		"""{"queued": true} is the entire server answer — it carries no counts,
+		because the poll has not run yet. An agent reading that key alone will
+		report "orders pulled"; the note is what stops it, and it must not invent
+		numbers the server did not send."""
+		with patch.object(curated, "get_client") as gc:
+			gc.return_value.call_method.return_value = {"queued": True}
+			out = self.tools["gb_pull_orders"](confirm=True)
+		self.assertEqual(out["queued"], True)
+		self.assertIn("note", out)
+		self.assertIn("queued", out["note"].lower())
+		# nothing invented: the only key added is the note
+		self.assertEqual(set(out) - {"note"}, {"queued"})
+		self.assertNotRegex(out["note"], r"\b\d+ (orders?|alerts?)\b")
+
+	def test_gb_pull_orders_passes_any_other_shape_through_verbatim(self):
+		"""The note is attached to ONE recognised shape. If the server ever answers
+		something else — an error dict, a future body that does carry counts — the
+		wrapper must hand it over untouched rather than narrate a shape it has not
+		been taught. Guessing here is how a wrapper starts lying."""
+		for payload in (
+			{"ok": False, "error": "GunBroker is not configured"},
+			{"queued": False, "reason": "polling disabled"},
+			{"queued": True, "orders": 3, "created": 1},  # a shape we do not know
+			[{"queued": True}],
+			None,
+		):
+			with self.subTest(payload=payload):
+				with patch.object(curated, "get_client") as gc:
+					gc.return_value.call_method.return_value = payload
+					self.assertEqual(self.tools["gb_pull_orders"](confirm=True), payload)
+
 	def test_gb_tools_pass_the_server_answer_through_verbatim(self):
 		"""The backend answers guard refusals with a skip dict and end_listing with
 		a confirmed/pending_manual shape. Both carry operational meaning ("the gun
@@ -687,6 +735,8 @@ class CuratedTools(unittest.TestCase):
 			"woo_push_serial", "woo_delist_serial",
 			# PR-4a: GunBroker listing-side channel
 			"gb_test_connection", "gb_push_serial", "gb_end_listing", "gb_listing_status",
+			# PR-4b: GunBroker order side
+			"gb_pull_orders",
 			"pending_orders", "pending_web_orders",
 			"dispose_order", "dispose_web_order", "record_payment",
 			"push_shipment", "mark_shipped_manually", "shipstation_test_connection",
@@ -705,22 +755,26 @@ class CuratedTools(unittest.TestCase):
 
 	def test_curated_tool_count_pinned(self):
 		# This pins the CURATED bucket with the GunBroker actions ON. Total =
-		# 57 curated + 10 generic + 11 distributor + 5 reports = 83, pinned in
+		# 58 curated + 10 generic + 11 distributor + 5 reports = 84, pinned in
 		# test_modes.py::test_full_mode_registers_the_whole_surface_including_the_cpa_18.
-		# The DEFAULT surface is 2 lower here and 6 lower overall (both gates off).
+		# The DEFAULT surface is 3 lower here and 7 lower overall (both gates off).
 		# Moving any of these means moving README.md, CLAUDE.md and TOOLS.md.
-		self.assertEqual(len(self.tools), 57)
+		self.assertEqual(len(self.tools), 58)
 
 
 class GunBrokerActionGate(unittest.TestCase):
-	"""gb_push_serial / gb_end_listing are not registered unless asked for.
+	"""gb_push_serial / gb_end_listing / gb_pull_orders are not registered unless
+	asked for.
 
 	confirm= catches a misfire. It does not catch an agent that has reasoned its
 	way into believing it ought to confirm — and the user-level instance really
 	does point at prod. An absent tool cannot be reasoned about
 	(tools/distributor.py:169-177, same stance).
 	"""
-	WRITES = ("gb_push_serial", "gb_end_listing")
+	# name -> the positional args that make a valid call (gb_pull_orders takes none)
+	WRITE_ARGS = {"gb_push_serial": ("SN1",), "gb_end_listing": ("SN1",),
+		"gb_pull_orders": ()}
+	WRITES = tuple(WRITE_ARGS)
 	READS = ("gb_test_connection", "gb_listing_status")
 
 	def _tools(self, gb_actions):
@@ -772,9 +826,9 @@ class GunBrokerActionGate(unittest.TestCase):
 		tools = self._tools("1")
 		client = FakeClient()
 		with patch.object(curated, "get_client", return_value=client):
-			for name in self.WRITES:
+			for name, args in self.WRITE_ARGS.items():
 				with self.subTest(name), self.assertRaises(WriteRefused):
-					tools[name]("SN1")
+					tools[name](*args)
 			self.assertEqual(client.calls, [])
 
 

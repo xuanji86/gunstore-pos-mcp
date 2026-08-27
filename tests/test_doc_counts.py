@@ -46,7 +46,8 @@ class _FakeMCP:
 _GATES = (distributor.ACTIONS_ENV, curated.GUNBROKER_ACTIONS_ENV)
 
 
-def _count(module, *, actions: str | None = None, gb_actions: str | None = None) -> int:
+def _names(module, *, actions: str | None = None,
+           gb_actions: str | None = None) -> frozenset:
     # Both registration gates are cleared first, then set explicitly. A stray
     # GUNSTORE_MCP_* in the developer's shell must not be able to decide what
     # "the live surface" is, or these counts would differ per machine.
@@ -63,14 +64,19 @@ def _count(module, *, actions: str | None = None, gb_actions: str | None = None)
             patch.object(distributor, "_load_env", lambda: None), \
             patch.object(curated, "_load_env", lambda: None):
         module.register(mcp)
-    return len(mcp.tools)
+    return frozenset(mcp.tools)
+
+
+def _count(module, **kw) -> int:
+    return len(_names(module, **kw))
 
 
 def _live() -> dict:
     generic_n = _count(generic)
     reports_n = _count(reports)
-    cur_on = _count(curated, gb_actions="1")
-    cur_off = _count(curated, gb_actions=None)
+    cur_on_names = _names(curated, gb_actions="1")
+    cur_off_names = _names(curated, gb_actions=None)
+    cur_on, cur_off = len(cur_on_names), len(cur_off_names)
     dist_on = _count(distributor, actions="1")
     dist_off = _count(distributor, actions=None)
     return {
@@ -78,8 +84,11 @@ def _live() -> dict:
         "curated": cur_on,
         "curated_default": cur_off,
         "gb_actions": cur_on - cur_off,
-        # the GunBroker reads, which are NOT gated (4 gb_ tools minus the 2 writes)
-        "gb_readonly": 4 - (cur_on - cur_off),
+        # the GunBroker reads, which are NOT gated. Counted off the surface, not
+        # written down as "<total gb tools> minus the writes": that literal was a
+        # hand-maintained number in the one file whose whole purpose is to abolish
+        # them, and adding gb_pull_orders in PR-4b silently made it wrong.
+        "gb_readonly": sum(1 for n in cur_off_names if n.startswith("gb_")),
         "reports": reports_n,
         "distributor": dist_on,
         "distributor_default": dist_off,
@@ -171,8 +180,20 @@ class ExactClaims(unittest.TestCase):
         balances, because everything would simply always be registered."""
         L = self.live
         self.assertEqual(L["actions"], 4)
-        self.assertEqual(L["gb_actions"], 2)
+        self.assertEqual(L["gb_actions"], 3)
         self.assertEqual(L["gb_readonly"], 2)
+
+    def test_the_gunbroker_buckets_are_read_off_the_surface(self):
+        """gb_readonly is derived, so it has to be shown to be derived: every gb_
+        tool is in exactly one of the two buckets, and neither is empty. A typo in
+        the prefix would otherwise report 0 reads and quietly agree with a doc that
+        also said 0."""
+        gated = _names(curated, gb_actions="1") - _names(curated, gb_actions=None)
+        ungated = {n for n in _names(curated, gb_actions=None) if n.startswith("gb_")}
+        self.assertTrue(gated and ungated)
+        self.assertTrue(all(n.startswith("gb_") for n in gated), sorted(gated))
+        self.assertEqual(len(gated), self.live["gb_actions"])
+        self.assertEqual(len(ungated), self.live["gb_readonly"])
 
 
 class NoStaleCountAnywhere(unittest.TestCase):
