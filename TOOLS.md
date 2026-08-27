@@ -58,15 +58,17 @@ firearm-listing-import 技能的脚本**——它会先把图缩到 2000px（原
 GunBroker 上一条 listing 就是一把枪。
 
 **默认只有查的那两个在**。GunBroker 只读工具 2 个（`gb_test_connection` / `gb_listing_status`）
-永远注册；GunBroker 写工具 2 个（`gb_push_serial` / `gb_end_listing`）**默认物理不存在**，
-要用得先 `GUNSTORE_MCP_GUNBROKER_ACTIONS=1` 启动（和分销商队列动作同一套姿态）。
+永远注册；GunBroker 写工具 3 个（`gb_push_serial` / `gb_end_listing` / `gb_pull_orders`）
+**默认物理不存在**，要用得先 `GUNSTORE_MCP_GUNBROKER_ACTIONS=1` 启动（和分销商队列动作同一套姿态）。
 理由不是形式主义：`confirm=` 挡得住手滑，挡不住一个"自己想明白了所以该确认"的 agent，
 而用户级实例真的指向 prod。**列表里不存在的工具没法被说服。**
 
 > **部署前置(lead 裁决,已进 G5 部署清单)**：任何要用 GunBroker 上架/结束的 POS MCP 实例
-> **必须**设 `GUNSTORE_MCP_GUNBROKER_ACTIONS=1`。**推和结束是同一个开关**——
+> **必须**设 `GUNSTORE_MCP_GUNBROKER_ACTIONS=1`。**推、结束、拉订单是同一个开关**——
 > 别只想着开上架:**能上架却不能结束的实例,正好卡在最危险的位置上**(枪在柜台卖了,
 > 助手回"我没有这个工具",listing 还挂在 GunBroker 上等着被第二个买家买走)。
+> `gb_pull_orders` 搭在同一个闸上:定时轮询本来就在跑,这个工具只是"现在就跑一轮",
+> 但**导进来一张订单会建 POS 单据并预留那把枪**,所以它跟着写面走而不是跟着只读面走。
 
 | 你想… | 工具 | confirm | 说明 |
 |---|---|---|---|
@@ -74,6 +76,7 @@ GunBroker 上一条 listing 就是一把枪。
 | 结束**一把枪**的 listing | `gb_end_listing` | ✅（且需开闸） | **看 `confirmed` 不是看 `ok`**：`confirmed=false` 一定带 `pending_manual` + `gb_url`，意思是**这把枪在 GunBroker 上还能被买走**，要人去站点上手动结束 |
 | 看一把枪的上架状态 | `gb_listing_status` | — | 只读；`state` 是 POS 视角（7 态），`remote` 是 GunBroker 当下的说法 |
 | 测试 GunBroker 连接 | `gb_test_connection` | — | 只读探活；**回包里的 `sandbox` 字段说明刚才打的是哪个环境** |
+| **立刻拉一轮 GunBroker 订单** | `gb_pull_orders` | ✅（且需开闸） | 无参数。回的是**回执不是结果**：`{"queued": true}` 只表示任务已入队(long 队列、与定时轮询同 job 去重,所以撞上正在跑的那轮是"加入"不是"再起一轮"),**不带任何"拉了几单"的计数**——别照着它回报"订单已同步",去看 GunBroker Order 列表和 Error Log。想改拉取起点(`orders_since_override`)只能去 Desk：把水位往回拨会重新导入旧单、重新预留枪 |
 
 **沙盒还是生产，这里选不了**：由目标 POS 站点的 `GunBroker Settings.sandbox_mode` 唯一决定，
 而这个字段**经 MCP 的任何一条写路都写不进去**——`enabled` / `sandbox_mode` /
@@ -93,8 +96,9 @@ GunBroker 上一条 listing 就是一把枪。
 `sandbox_mode`——一个填了生产凭据的本地 dev 站照样能挂出真 listing。唯一可靠的确认方式是
 `gb_test_connection` 回包里的 `sandbox` 字段，`gb_push_serial` 之前先看一眼。
 
-**角色不同**：`gb_test_connection` 要 POS 上的 `SYSTEM_ROLES`，另外三个只要 `STOCK_ROLES`。
-只有库存类角色的 API 用户会**单单在这个探活工具上吃 403**——而它恰好是文档教你第一个调的，
+**角色不同**：`gb_test_connection` 与 `gb_pull_orders` 要 POS 上的 `SYSTEM_ROLES`，
+另外三个（`gb_push_serial` / `gb_end_listing` / `gb_listing_status`）只要 `STOCK_ROLES`。
+只有库存类角色的 API 用户会**单单在这两个工具上吃 403**——而探活恰好是文档教你第一个调的，
 看到 403 先想这件事，别以为是连接坏了。
 
 **手动重挂**（人工结束过的枪要再上架）不在 MCP 面上：走 Serial No 表单，那里能看见
@@ -245,7 +249,7 @@ GunBroker 上一条 listing 就是一把枪。
 
 ## 10. CPA 模式（只读会计面）+ 报表工具包
 
-**模式开关**：启动环境变量 `GUNSTORE_MCP_MODE=cpa`（默认 `full` = 全部 83 工具中默认注册 77（4 个分销商队列动作 + 2 个 GunBroker 写动作需显式开启），行为与以前完全一致；未知值直接拒绝启动，不会静默降级成可写）。cpa 模式给会计/CPA 用：**写面在工具列表里物理不存在**，不是"存在但会拒绝"。三层防御，缺一层其余仍兜底：
+**模式开关**：启动环境变量 `GUNSTORE_MCP_MODE=cpa`（默认 `full` = 全部 84 工具中默认注册 77（4 个分销商队列动作 + 3 个 GunBroker 写动作需显式开启），行为与以前完全一致；未知值直接拒绝启动，不会静默降级成可写）。cpa 模式给会计/CPA 用：**写面在工具列表里物理不存在**，不是"存在但会拒绝"。三层防御，缺一层其余仍兜底：
 
 1. **注册层**：tools/list 恰好 = 下面 18 个名字（集合相等，测试钉死）；
 2. **客户端层**：一切写方法 + 未逐一列名的点路径方法（`frappe_run_method` 整个不注册）→ `CpaModeRefused`；只读点路径 allowlist 逐一列名，禁通配；
@@ -295,5 +299,5 @@ GunBroker 上一条 listing 就是一把枪。
 
 ---
 
-*工具总数 83（10 个通用 + 57 个专用 + 11 个分销商 + 5 个报表），默认注册 77（4 个分销商队列动作需 `GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1`；2 个 GunBroker 写动作需 `GUNSTORE_MCP_GUNBROKER_ACTIONS=1`）；`GUNSTORE_MCP_MODE=cpa` 只读模式恰注册其中 18 个。对应版本 v0.4.1；工具行为以 README.md
+*工具总数 84（10 个通用 + 58 个专用 + 11 个分销商 + 5 个报表），默认注册 77（4 个分销商队列动作需 `GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1`；3 个 GunBroker 写动作需 `GUNSTORE_MCP_GUNBROKER_ACTIONS=1`）；`GUNSTORE_MCP_MODE=cpa` 只读模式恰注册其中 18 个。对应版本 v0.4.1；工具行为以 README.md
 和源码 `gunstore_mcp/tools/` 为准。*

@@ -1,16 +1,16 @@
 # gunstore-pos-mcp — POS 的 MCP 服务器(Python/uv)
 
-gunstore-pos 平台的 MCP server 源码仓(83 工具 = 10 个通用 Frappe CRUD + 57 个业务工具 + 11 个分销商工具 + 5 个 CPA 报表工具:寄售出库/订单履约/4473/RSR/FastBound/Woo/GunBroker/库存/FFL/财税报表;**默认注册 77 个**——4 个分销商队列动作需 `GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1`、2 个 GunBroker 写动作需 `GUNSTORE_MCP_GUNBROKER_ACTIONS=1` 显式开启,否则物理不注册)。工具清单与语义见 `TOOLS.md`。gunstore-pos 仓的 `.mcp.json` 以 `uv run --directory <本仓> gunstore-mcp` 方式引用。
+gunstore-pos 平台的 MCP server 源码仓(84 工具 = 10 个通用 Frappe CRUD + 58 个业务工具 + 11 个分销商工具 + 5 个 CPA 报表工具:寄售出库/订单履约/4473/RSR/FastBound/Woo/GunBroker/库存/FFL/财税报表;**默认注册 77 个**——4 个分销商队列动作需 `GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1`、3 个 GunBroker 写动作需 `GUNSTORE_MCP_GUNBROKER_ACTIONS=1` 显式开启,否则物理不注册)。工具清单与语义见 `TOOLS.md`。gunstore-pos 仓的 `.mcp.json` 以 `uv run --directory <本仓> gunstore-mcp` 方式引用。
 
 **模式**:`GUNSTORE_MCP_MODE=cpa` 启动只读会计面(恰 18 工具,写面物理不注册 + client 层方法 allowlist + Settings 读 blocklist 三层防御,见 `gunstore_mcp/modes.py`);默认 `full` 全量。未知模式值拒绝启动(fail-closed)。
 
 **两个动作闸**(互相独立,也都独立于 `GUNSTORE_MCP_MODE`;开任何一个都**不会**给 cpa 面加工具):
 - `GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1` → 那 4 个分销商动作(confirm/cancel/reroute/update_order_ffl)
-- `GUNSTORE_MCP_GUNBROKER_ACTIONS=1` → `gb_push_serial` / `gb_end_listing`(**只有写的那两个**;`gb_test_connection` / `gb_listing_status` 永远注册——查看和探活正是你希望人在动手前先做的事)
+- `GUNSTORE_MCP_GUNBROKER_ACTIONS=1` → `gb_push_serial` / `gb_end_listing` / `gb_pull_orders`(**只有写的那三个**;`gb_test_connection` / `gb_listing_status` 永远注册——查看和探活正是你希望人在动手前先做的事)。`gb_pull_orders` 只是"拉订单"却也在闸内:导进来一张订单会建 POS 单据并**预留那把枪**
 
 默认都**物理不注册**——与 cpa 模式同一姿态:"存在但拒绝"挡不住"agent 自认为该确认",而用户级实例真的指向 prod。此处不像 mode 那样对未知值拒绝启动:任何非显式真值都=关,方向天然 fail-closed。
 
-**`gb_push_serial` 为什么够格进这个闸**:它把一把真枪挂上公开拍卖行,买家可以在任何人发现之前拍下,撤下来要人去 GunBroker 站点手动做。`gb_end_listing` 是它的配对项——两者属同一个操作员决定,拆开会造成"能结束不能重挂"。
+**`gb_push_serial` 为什么够格进这个闸**:它把一把真枪挂上公开拍卖行,买家可以在任何人发现之前拍下,撤下来要人去 GunBroker 站点手动做。`gb_end_listing` 是它的配对项——两者属同一个操作员决定,拆开会造成"能结束不能重挂"。**`gb_pull_orders` 名字像只读,判据看的是后果**:导进来一张订单会建 POS 单据、按序列号匹配库存并**预留那把枪**;打错环境或有人把水位(`orders_since_override`)往回拨过,这一轮就会预留一批没人买过的枪。
 
 **部署前置(lead 裁决,G5 清单)**:要用 GunBroker 渠道的实例**必须**设 `GUNSTORE_MCP_GUNBROKER_ACTIONS=1`。只开上架不开结束是最危险的配置——柜台卖掉后没人能结束 listing,而自动结束链路(`serial_channel_exit`)要到 PR-2/PR-3 才上线。
 
