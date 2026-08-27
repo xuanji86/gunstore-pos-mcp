@@ -133,6 +133,24 @@ CLAIMS = [
     # would make the GunBroker numbers get checked against the distributor's.
     ("TOOLS.md", r"GunBroker 只读工具 (\d+)", "gb_readonly"),
     ("TOOLS.md", r"GunBroker 写工具 (\d+)", "gb_actions"),
+    # The size of each opt-in SET, as the three intro paragraphs phrase it —
+    # "the 3 GunBroker write actions" / "3 个 GunBroker 写动作", and the same for
+    # the distributor's 4. Five sites quote the GunBroker number and until now
+    # exactly one of them was pinned.
+    #
+    # The sweep below does not cover this, and cannot be made to: it only asks
+    # whether a quoted number is SOME live bucket size, and 2 is one (gb_readonly).
+    # Measured, not assumed — with these four rows absent, editing all four
+    # unpinned sites from 3 back to 2 left the suite entirely green. A count is
+    # only guarded where something knows which count it is.
+    ("README.md", r"(\d+) GunBroker write actions", "gb_actions"),
+    ("CLAUDE.md", r"(\d+) 个 GunBroker 写动作", "gb_actions"),
+    ("TOOLS.md", r"(\d+) 个 GunBroker 写动作", "gb_actions"),
+    # …and the distributor's, which has the identical hole and has simply never
+    # moved. Anchored on 队列动作 so it cannot collide with "(\d+) 个分销商 \+".
+    ("README.md", r"(\d+) distributor queue actions", "actions"),
+    ("CLAUDE.md", r"(\d+) 个分销商队列动作", "actions"),
+    ("TOOLS.md", r"(\d+) 个分销商队列动作", "actions"),
 ]
 
 # "12 tools", "12-tool", "12 工具", "12 个工具"

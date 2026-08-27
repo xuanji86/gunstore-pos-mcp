@@ -27,7 +27,13 @@ _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
 
 def gunbroker_actions_enabled() -> bool:
-    """Whether gb_push_serial / gb_end_listing are registered at all (default: NO).
+    """Whether the GunBroker WRITE tools are registered at all (default: NO).
+
+    Which tools those are is the `if gunbroker_actions_enabled():` block in
+    register() — deliberately not listed here. This docstring named two of them
+    while the block held three, which is the same failure the block itself
+    exists to talk about: the description of a guard drifting wider or narrower
+    than the guard. A pointer cannot go stale; a list has now tried twice.
 
     Same shape and same reasoning as tools/distributor.py's ACTIONS_ENV: anything
     not explicitly truthy leaves them off, so this is fail-closed by construction
