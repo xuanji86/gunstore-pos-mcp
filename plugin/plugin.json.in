@@ -1,0 +1,6 @@
+{
+  "name": "gunstore-pos",
+  "description": "GunStore-POS(Frappe/ERPNext)MCP 服务器:库存、销售、合规、Woo 同步与分销商操作;另注册一个只读 CPA 模式 server。",
+  "version": "__VERSION__",
+  "author": { "name": "Anji Xu", "email": "xuanji86@gmail.com" }
+}
