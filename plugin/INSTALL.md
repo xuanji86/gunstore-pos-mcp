@@ -6,10 +6,12 @@ GunStore-POS(Frappe/ERPNext)MCP 服务器。包内含完整 Python 包源码、`
 
 一个插件注册**两个 server**:
 
-| server | 工具数 | 说明 |
-|---|---|---|
-| `gunstore-pos` | 75 | 完整工具面(含写操作) |
-| `gunstore-pos-cpa` | 18 | 只读会计视角,写工具在代码层就没注册 |
+| server | 说明 |
+|---|---|
+| `gunstore-pos` | 完整工具面(含写操作) |
+| `gunstore-pos-cpa` | 只读会计视角,写工具在代码层就没注册 |
+
+装好后用 `/mcp` 看各自的实际工具清单。
 
 ## 安装
 
