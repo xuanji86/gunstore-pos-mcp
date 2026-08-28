@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from mcp.server.fastmcp import FastMCP
 
+from . import __version__
 from .modes import CPA_MODE, CPA_TOOL_NAMES, FULL_MODE, FilteredMCP, get_mode
 from .tools import curated, distributor, generic, reports
 
@@ -36,6 +37,9 @@ def register_tools(mcp, mode: str | None = None) -> None:
 def build() -> FastMCP:
     mode = get_mode()
     mcp = FastMCP("gunstore-pos" if mode == FULL_MODE else "gunstore-pos-cpa")
+    # FastMCP takes no version; without this serverInfo reports the mcp SDK's
+    # version, so clients can't tell which build of ours they're talking to.
+    mcp._mcp_server.version = __version__
     register_tools(mcp, mode)
     return mcp
 

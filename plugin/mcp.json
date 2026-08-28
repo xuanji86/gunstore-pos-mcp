@@ -1,0 +1,19 @@
+{
+  "gunstore-pos": {
+    "type": "stdio",
+    "command": "bash",
+    "args": [
+      "-c",
+      "PATH=\"$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH\"; if [ -n \"$GUNSTORE_ENV_FILE\" ] && [ -f \"$GUNSTORE_ENV_FILE\" ]; then set -a; . \"$GUNSTORE_ENV_FILE\"; set +a; fi; exec uv run --directory \"${CLAUDE_PLUGIN_ROOT}\" gunstore-mcp"
+    ]
+  },
+  "gunstore-pos-cpa": {
+    "type": "stdio",
+    "command": "bash",
+    "args": [
+      "-c",
+      "PATH=\"$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH\"; if [ -n \"$GUNSTORE_ENV_FILE\" ] && [ -f \"$GUNSTORE_ENV_FILE\" ]; then set -a; . \"$GUNSTORE_ENV_FILE\"; set +a; fi; exec uv run --directory \"${CLAUDE_PLUGIN_ROOT}\" gunstore-mcp"
+    ],
+    "env": { "GUNSTORE_MCP_MODE": "cpa" }
+  }
+}

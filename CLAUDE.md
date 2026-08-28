@@ -17,8 +17,10 @@ gunstore-pos 平台的 MCP server 源码仓(84 工具 = 10 个通用 Frappe CRUD
 ## 命令
 - 测试:`uv run --with pytest pytest`(pytest 不在项目依赖里,用 --with 注入)
 - 本地运行:`uv run gunstore-mcp`(需环境变量指向目标 Frappe 站点)
+- 打插件包:`scripts/build-plugin.sh [输出目录]`(默认 `~/Desktop`),产出可上传 claude.ai 的 zip
 
 ## 关键 gotcha
+- **发插件包必须先 bump `gunstore_mcp/__init__.py` 的 `__version__`**。它是版本单一来源(pyproject 与 plugin.json 都从它取)。Claude Code 靠 resolved version 字符串比对缓存,版本没变就算 zip 换了客户端也继续用旧的缓存副本,更新静默不生效。
 - **运行实例可能指向 prod POS**。改本仓代码 ≠ 可以拿连接中的 MCP 工具打 prod;联调一律配置指向 `dev.localhost:8000`(gunstore-pos `make dev-up` 起的本地站)。
 - 工具行为改动要同步更新 `TOOLS.md`。**工具总数钉在 6 处,改一个就要改全部**:`TOOLS.md` §10 开头 + 文末脚注 / 本文件 / `README.md` / `tests/test_modes.py::test_full_mode_registers_the_whole_surface_including_the_cpa_18`(总数)/ `tests/test_curated.py::test_curated_tool_count_pinned`(curated 桶)/ `tests/test_distributor.py::test_distributor_tool_count_pinned`(分销商桶)。三条测试是硬闸——加一个模块必然先被它们拦下,这是好事。**注意这个数字本身历史上被低估过两次**(先写 3 处、后写 5 处),每次都是"又冒出一处没跟着改";加新桶时请连同本行一起更新计数。**`tests/test_doc_counts.py` 才是真闸**(它自己算 live 计数再逐处比对,上面这份手写清单按其 docstring 的说法必然会烂);新增**注册期开关**时要同时扩 `_count()` / `_live()`,否则默认面的数字会被开发者自己 shell 里的环境变量决定。
 - 服务端签名以 gunstore-pos 源码为准,落码前逐个核对——MCP 只是薄包装,签名漂移不会在本仓测试里暴露(测试全 mock)。
