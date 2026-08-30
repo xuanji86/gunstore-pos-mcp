@@ -164,7 +164,7 @@ claude mcp add gunstore-pos-cpa --scope user \
 ### CPA reports (read-only; registered in both modes)
 | Tool | Purpose |
 |---|---|
-| `sales_report` | the POS Sales Report, payload passed through unchanged (views Order / Order Detail / Product; channel POS/Web/B2B-Manual) |
+| `sales_report` | the POS Sales Report, payload passed through unchanged (views Order / Order Detail / Product; channel POS/Web/Manual) |
 | `gl_entries` | GL rows for a date range (`is_cancelled=0` always; explicit `truncated:true`) |
 | `financial_statement` | P&L / Balance Sheet (Date Range) / Trial Balance (fiscal-year auto-resolved) |
 | `tax_liability` | sales-tax liability roll-forward from the GL — accounts resolved from the default sales-tax template, vouchers bucketed fail-closed, cent-exact identity asserted |

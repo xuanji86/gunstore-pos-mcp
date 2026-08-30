@@ -53,7 +53,7 @@ def register(mcp: Any) -> None:
         (per-order), "Order Detail" (order → line drill-down) or "Product"
         (default here — the CPA tax-reporting view: per-line tax from ERPNext's
         stored item-wise tax details, tax rows classified to Sales Tax /
-        Shipping / Unclassified fail-closed). channel: POS | Web | B2B-Manual
+        Shipping / Unclassified fail-closed). channel: POS | Web | Manual
         (empty = all). product_type: "Firearms" | "Non-Firearms" (empty = all) —
         any OTHER value is REFUSED by the server rather than ignored (F-2: an
         unrecognised value used to return everything unfiltered, which reads as
