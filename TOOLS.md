@@ -262,16 +262,18 @@ GunBroker 上一条 listing 就是一把枪。
 
 注意 cpa 模式**没有** `available_serials`（其默认剔除寄售/暂扣枪，在盘点语境会漏枪——盘点用 `firearms_in_stock`）。
 
+**账本在 QuickBooks(owner 裁定 2026-09-02)**:ERPNext 是业务系统与数据源,不是账本。喂 QB 的是 `sales_report` / `inventory_receipts` / `tax_liability` + 标准报表 Stock Balance;`financial_statement` / `ar_ap_summary` 只作参考(ERPNext 总账不录费用、不录供应商发票,SRBNB 长期挂账)。
+
 **报表工具包**（口径权威 = run 2026-07-16-mcp-cpa-mode/cpa-review.md §2/§3）：
 
 | 你想… | 工具 | 说明 |
 |---|---|---|
 | 看期间营收+毛利（报税视图） | `sales_report(from_date, to_date, view="Product", channel?, product_type?)` | Sales Report 原样透传（含 report_summary 卡片）；view: Order / Order Detail / Product；channel: POS / Web / Manual |
-| 看期间**入库**了什么（枪/弹药/配件，从哪来、多少钱） | `inventory_receipts(from_date, to_date, view="Units", category?, receipt_class?, supplier?, include_transfers=False, include_custody=False)` | Inventory Receipts 报表原样透传（含卡片）；直接读库存流水（actual_qty>0），Cost Received 与 Stock In Hand 对得上；view: Units（默认，逐支一行）/ Summary（品类 × 入库类型汇总）/ Receipts（Desk 树形，行带 indent）；类型 Purchase / Trade-in / Consignment / Intake / Return / Adjustment；仓内调拨与顾客托管枪默认不出，开关或点名该类型才出；标记 No cost / Unbilled（PR 未录供应商发票）/ No A&D |
+| 看期间**入库**了什么（枪/弹药/配件，从哪来、多少钱） | `inventory_receipts(from_date, to_date, view="Units", category?, receipt_class?, supplier?, include_transfers=False, include_custody=False)` | Inventory Receipts 报表原样透传（含卡片）；直接读库存流水（actual_qty>0），Cost Received 与 Stock In Hand 对得上；view: Units（默认，逐支一行）/ Summary（品类 × 入库类型汇总）/ Receipts（Desk 树形，行带 indent）；类型 Purchase / Trade-in / Consignment / Intake / Return / Adjustment / Revaluation（成本修正差额，件数 0，按存货调整记）；仓内调拨与顾客托管枪默认不出，开关或点名该类型才出；标记 No cost / No A&D |
 | 追总账明细 | `gl_entries(from_date, to_date, account?, party?, voucher_no?, voucher_type?, limit=500)` | 恒定 `is_cancelled=0`（cancel+amend 被撤单自动出列）；**截断显式** `truncated:true`，绝不静默截断；limit 夹 1..5000（0/空按 500），更多行用日期范围分页；单公司口径——多公司化需补 company filter |
 | 跑三大财务报表 | `financial_statement(statement, from_date, to_date, periodicity="Monthly")` | statement: `pnl` / `balance_sheet` / `trial_balance`；P&L/BS 走 Date Range;Trial Balance 需日期落在同一 Fiscal Year（自动解析,跨年拒绝） |
 | 查期间销售税负债滚动表 | `tax_liability(from_date, to_date)` | opening/collected/remitted/closing 按 voucher 分列,非常规 voucher fail-closed 单列;科目动态解析自默认销售税模板;**注意发票的 "Total Taxes and Charges" 含运费,不是销售税** |
-| 查应收/应付账龄 | `ar_ap_summary(kind, as_on_date)` | kind: `ar` / `ap`;Posting Date 基准,30/60/90/120 账龄桶;寄售结算应收在 AR 里按经销商列示 |
+| 查应收/应付账龄 | `ar_ap_summary(kind, as_on_date)` | kind: `ar` / `ap`;Posting Date 基准,30/60/90/120 账龄桶;寄售结算应收在 AR 里按经销商列示。**`ap` 不适用**:账本在 QuickBooks、进货预付,ERPNext 不录 Purchase Invoice(直发单的 RSR 应付除外) |
 
 **月结/报税常用标准报表**（`frappe_run_report` 直跑,键名已核对 ERPNext v16 源码）：
 

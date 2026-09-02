@@ -165,11 +165,11 @@ claude mcp add gunstore-pos-cpa --scope user \
 | Tool | Purpose |
 |---|---|
 | `sales_report` | the POS Sales Report, payload passed through unchanged (views Order / Order Detail / Product; channel POS/Web/Manual) |
-| `inventory_receipts` | the POS Inventory Receipts report — everything that entered stock in a period (per unit / per serial, or a category × receipt-type summary), straight from the stock ledger; classes Purchase / Trade-in / Consignment / Intake / Return / Adjustment, with No-cost / Unbilled / No-A&D flags |
+| `inventory_receipts` | the POS Inventory Receipts report — everything that entered stock in a period (per unit / per serial, or a category × receipt-type summary), straight from the stock ledger; classes Purchase / Trade-in / Consignment / Intake / Return / Adjustment / Revaluation (cost correction, 0 units), with No-cost / No-A&D flags |
 | `gl_entries` | GL rows for a date range (`is_cancelled=0` always; explicit `truncated:true`) |
 | `financial_statement` | P&L / Balance Sheet (Date Range) / Trial Balance (fiscal-year auto-resolved) |
 | `tax_liability` | sales-tax liability roll-forward from the GL — accounts resolved from the default sales-tax template, vouchers bucketed fail-closed, cent-exact identity asserted |
-| `ar_ap_summary` | aged AR / AP as of a date (Posting Date basis, 30/60/90/120) |
+| `ar_ap_summary` | aged AR / AP as of a date (Posting Date basis, 30/60/90/120). AP is not maintained in ERPNext (QuickBooks is the book; purchases are prepaid) — reference only |
 
 ## Security notes
 

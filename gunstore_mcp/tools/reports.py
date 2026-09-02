@@ -83,15 +83,18 @@ def register(mcp: Any) -> None:
         "Receipts" (the Desk tree: voucher → lines → units, rows carry indent).
         category: Firearm | Ammunition | Accessory | Other. receipt_class:
         Purchase | Trade-in | Consignment | Intake | Return | Adjustment |
-        Transfer | Custody | Other — any OTHER value for either is REFUSED by
+        Revaluation | Transfer | Custody | Other — any OTHER value for either is REFUSED by
         the server, never ignored. supplier: a Supplier name (Purchase Receipts
         only). Internal warehouse transfers and customer-custody guns (FFL
         transfers for a customer — not our inventory) are hidden unless
         include_transfers / include_custody is true or that class is selected.
-        Flags per row: "No cost" (cost ≤ 0.01 on a non-consignment unit),
-        "Unbilled" (Purchase Receipt with no supplier invoice yet — Stock
-        Received But Not Billed still open), "No A&D" (firearm serial without a
-        submitted FFL Acquisition). Read-only."""
+        Revaluation = a Stock Reconciliation that only changed a unit's cost
+        (0 units, cost = the difference) — book it as an inventory adjustment,
+        not a purchase. Flags per row: "No cost" (cost ≤ 0.01 on a
+        non-consignment unit), "No A&D" (firearm serial without a submitted FFL
+        Acquisition). The books of record are QuickBooks; ERPNext records no
+        supplier invoices (purchases are prepaid), so there is no billed /
+        unbilled state to report. Read-only."""
         filters: dict[str, Any] = {
             "from_date": from_date, "to_date": to_date, "view": view,
         }
