@@ -4,7 +4,7 @@ Run: `gunstore-mcp` (console script) or `python -m gunstore_mcp.server`.
 Credentials come from mcp/.env (see .env.example).
 
 Modes (GUNSTORE_MCP_MODE): "full" (default) = the whole surface; "cpa" = the
-read-only accountant surface (exactly the 18 tools in modes.CPA_TOOL_NAMES; the
+read-only accountant surface (exactly the 19 tools in modes.CPA_TOOL_NAMES; the
 write tools are never registered).
 
 GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1 additionally opts into the 4 distributor queue

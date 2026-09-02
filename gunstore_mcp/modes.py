@@ -35,7 +35,7 @@ class CpaModeRefused(RuntimeError):
 
 
 # Layer 1 — the EXACT cpa tools/list (asserted by set equality in tests;
-# 4 generic + 9 curated read-only + 5 CPA reports = 18).
+# 4 generic + 9 curated read-only + 6 CPA reports = 19).
 CPA_TOOL_NAMES: frozenset[str] = frozenset({
     # generic reads (frappe_run_method deliberately absent: reads and writes
     # are statically indistinguishable through it)
@@ -55,6 +55,7 @@ CPA_TOOL_NAMES: frozenset[str] = frozenset({
     "consignment_dealer_orders",
     # CPA report pack (tools/reports.py)
     "sales_report",
+    "inventory_receipts",
     "gl_entries",
     "financial_statement",
     "tax_liability",

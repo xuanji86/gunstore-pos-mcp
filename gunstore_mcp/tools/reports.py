@@ -68,6 +68,46 @@ def register(mcp: Any) -> None:
         return get_client().run_report("Sales Report", filters)
 
     @mcp.tool()
+    def inventory_receipts(
+        from_date: str, to_date: str, view: str = "Units",
+        category: str | None = None, receipt_class: str | None = None,
+        supplier: str | None = None, include_transfers: bool = False,
+        include_custody: bool = False,
+    ) -> Any:
+        """Everything that ENTERED stock in the period — the POS Inventory
+        Receipts report, returned UNCHANGED (columns, rows, report_summary
+        cards). Straight from the stock ledger (actual_qty > 0), so its Cost
+        Received ties to Stock In Hand. view: "Units" (default here — one row
+        per unit, per serial for firearms; the CSV grain), "Summary" (category
+        → receipt type roll-up: receipts / units / cost / flag counts) or
+        "Receipts" (the Desk tree: voucher → lines → units, rows carry indent).
+        category: Firearm | Ammunition | Accessory | Other. receipt_class:
+        Purchase | Trade-in | Consignment | Intake | Return | Adjustment |
+        Transfer | Custody | Other — any OTHER value for either is REFUSED by
+        the server, never ignored. supplier: a Supplier name (Purchase Receipts
+        only). Internal warehouse transfers and customer-custody guns (FFL
+        transfers for a customer — not our inventory) are hidden unless
+        include_transfers / include_custody is true or that class is selected.
+        Flags per row: "No cost" (cost ≤ 0.01 on a non-consignment unit),
+        "Unbilled" (Purchase Receipt with no supplier invoice yet — Stock
+        Received But Not Billed still open), "No A&D" (firearm serial without a
+        submitted FFL Acquisition). Read-only."""
+        filters: dict[str, Any] = {
+            "from_date": from_date, "to_date": to_date, "view": view,
+        }
+        if category:
+            filters["category"] = category
+        if receipt_class:
+            filters["receipt_class"] = receipt_class
+        if supplier:
+            filters["supplier"] = supplier
+        if include_transfers:
+            filters["include_transfers"] = 1
+        if include_custody:
+            filters["include_custody"] = 1
+        return get_client().run_report("Inventory Receipts", filters)
+
+    @mcp.tool()
     def gl_entries(
         from_date: str, to_date: str, account: str | None = None,
         party: str | None = None, voucher_no: str | None = None,

@@ -1,8 +1,8 @@
 # gunstore-pos-mcp — POS 的 MCP 服务器(Python/uv)
 
-gunstore-pos 平台的 MCP server 源码仓(84 工具 = 10 个通用 Frappe CRUD + 58 个业务工具 + 11 个分销商工具 + 5 个 CPA 报表工具:寄售出库/订单履约/4473/RSR/FastBound/Woo/GunBroker/库存/FFL/财税报表;**默认注册 77 个**——4 个分销商队列动作需 `GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1`、3 个 GunBroker 写动作需 `GUNSTORE_MCP_GUNBROKER_ACTIONS=1` 显式开启,否则物理不注册)。工具清单与语义见 `TOOLS.md`。gunstore-pos 仓的 `.mcp.json` 以 `uv run --directory <本仓> gunstore-mcp` 方式引用。
+gunstore-pos 平台的 MCP server 源码仓(85 工具 = 10 个通用 Frappe CRUD + 58 个业务工具 + 11 个分销商工具 + 6 个 CPA 报表工具:寄售出库/订单履约/4473/RSR/FastBound/Woo/GunBroker/库存/FFL/财税报表;**默认注册 78 个**——4 个分销商队列动作需 `GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1`、3 个 GunBroker 写动作需 `GUNSTORE_MCP_GUNBROKER_ACTIONS=1` 显式开启,否则物理不注册)。工具清单与语义见 `TOOLS.md`。gunstore-pos 仓的 `.mcp.json` 以 `uv run --directory <本仓> gunstore-mcp` 方式引用。
 
-**模式**:`GUNSTORE_MCP_MODE=cpa` 启动只读会计面(恰 18 工具,写面物理不注册 + client 层方法 allowlist + Settings 读 blocklist 三层防御,见 `gunstore_mcp/modes.py`);默认 `full` 全量。未知模式值拒绝启动(fail-closed)。
+**模式**:`GUNSTORE_MCP_MODE=cpa` 启动只读会计面(恰 19 工具,写面物理不注册 + client 层方法 allowlist + Settings 读 blocklist 三层防御,见 `gunstore_mcp/modes.py`);默认 `full` 全量。未知模式值拒绝启动(fail-closed)。
 
 **两个动作闸**(互相独立,也都独立于 `GUNSTORE_MCP_MODE`;开任何一个都**不会**给 cpa 面加工具):
 - `GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1` → 那 4 个分销商动作(confirm/cancel/reroute/update_order_ffl)
@@ -22,7 +22,7 @@ gunstore-pos 平台的 MCP server 源码仓(84 工具 = 10 个通用 Frappe CRUD
 ## 关键 gotcha
 - **发插件包必须先 bump `gunstore_mcp/__init__.py` 的 `__version__`**。它是版本单一来源(pyproject 与 plugin.json 都从它取)。Claude Code 靠 resolved version 字符串比对缓存,版本没变就算 zip 换了客户端也继续用旧的缓存副本,更新静默不生效。
 - **运行实例可能指向 prod POS**。改本仓代码 ≠ 可以拿连接中的 MCP 工具打 prod;联调一律配置指向 `dev.localhost:8000`(gunstore-pos `make dev-up` 起的本地站)。
-- 工具行为改动要同步更新 `TOOLS.md`。**工具总数钉在 6 处,改一个就要改全部**:`TOOLS.md` §10 开头 + 文末脚注 / 本文件 / `README.md` / `tests/test_modes.py::test_full_mode_registers_the_whole_surface_including_the_cpa_18`(总数)/ `tests/test_curated.py::test_curated_tool_count_pinned`(curated 桶)/ `tests/test_distributor.py::test_distributor_tool_count_pinned`(分销商桶)。三条测试是硬闸——加一个模块必然先被它们拦下,这是好事。**注意这个数字本身历史上被低估过两次**(先写 3 处、后写 5 处),每次都是"又冒出一处没跟着改";加新桶时请连同本行一起更新计数。**`tests/test_doc_counts.py` 才是真闸**(它自己算 live 计数再逐处比对,上面这份手写清单按其 docstring 的说法必然会烂);新增**注册期开关**时要同时扩 `_count()` / `_live()`,否则默认面的数字会被开发者自己 shell 里的环境变量决定。
+- 工具行为改动要同步更新 `TOOLS.md`。**工具总数钉在 6 处,改一个就要改全部**:`TOOLS.md` §10 开头 + 文末脚注 / 本文件 / `README.md` / `tests/test_modes.py::test_full_mode_registers_the_whole_surface_including_the_cpa_surface`(总数)/ `tests/test_curated.py::test_curated_tool_count_pinned`(curated 桶)/ `tests/test_distributor.py::test_distributor_tool_count_pinned`(分销商桶)。三条测试是硬闸——加一个模块必然先被它们拦下,这是好事。**注意这个数字本身历史上被低估过两次**(先写 3 处、后写 5 处),每次都是"又冒出一处没跟着改";加新桶时请连同本行一起更新计数。**`tests/test_doc_counts.py` 才是真闸**(它自己算 live 计数再逐处比对,上面这份手写清单按其 docstring 的说法必然会烂);新增**注册期开关**时要同时扩 `_count()` / `_live()`,否则默认面的数字会被开发者自己 shell 里的环境变量决定。
 - 服务端签名以 gunstore-pos 源码为准,落码前逐个核对——MCP 只是薄包装,签名漂移不会在本仓测试里暴露(测试全 mock)。
 
 ## 部署政策

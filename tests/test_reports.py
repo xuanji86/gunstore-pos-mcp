@@ -60,11 +60,36 @@ class ReportTools(unittest.TestCase):
 
 	# ---------------------------------------------------------- registration
 
-	def test_exactly_five_report_tools(self):
+	def test_exactly_six_report_tools(self):
 		self.assertEqual(set(self.tools), {
-			"sales_report", "gl_entries", "financial_statement",
+			"sales_report", "inventory_receipts", "gl_entries", "financial_statement",
 			"tax_liability", "ar_ap_summary",
 		})
+
+	# ---------------------------------------------------- inventory_receipts
+
+	def test_inventory_receipts_passthrough_defaults_to_units(self):
+		canned = {"columns": [1], "result": [2], "report_summary": [{"label": "Cost Received"}]}
+		self.client.canned[("run_report", "Inventory Receipts")] = canned
+		out = self.tools["inventory_receipts"]("2026-08-01", "2026-08-31")
+		self.assertIs(out, canned)  # 原样透传,卡片不得丢
+		self.assertEqual(self.client.calls[-1], ("run_report", "Inventory Receipts", {
+			"from_date": "2026-08-01", "to_date": "2026-08-31", "view": "Units",
+		}))
+
+	def test_inventory_receipts_optional_filters_and_include_flags(self):
+		self.tools["inventory_receipts"]("2026-08-01", "2026-08-31", view="Summary",
+			category="Firearm", receipt_class="Transfer", supplier="RSR Group",
+			include_transfers=True, include_custody=True)
+		self.assertEqual(self.client.calls[-1][2], {
+			"from_date": "2026-08-01", "to_date": "2026-08-31", "view": "Summary",
+			"category": "Firearm", "receipt_class": "Transfer", "supplier": "RSR Group",
+			"include_transfers": 1, "include_custody": 1,
+		})
+		# False flags are NOT sent — the server's default (hidden) must not be
+		# overridden by an explicit 0 that a later server version might read differently.
+		self.tools["inventory_receipts"]("2026-08-01", "2026-08-31")
+		self.assertNotIn("include_transfers", self.client.calls[-1][2])
 
 	# ---------------------------------------------------------- sales_report
 
