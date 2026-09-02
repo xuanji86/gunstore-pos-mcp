@@ -5,7 +5,7 @@ description = "MCP server wrapping the GunStore-POS Frappe REST API for fast pro
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "mcp[cli]>=1.2",
+    "mcp[cli]>=1.2,<2",  # code targets the v1 FastMCP API; mcp 2.x renamed it to MCPServer,
     "requests>=2.31",
     "urllib3>=2",
     "python-dotenv>=1.0",

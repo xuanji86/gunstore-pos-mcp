@@ -28,7 +28,7 @@ _config: Config | None = None
 
 
 def _load_env() -> None:
-    # mcp/.env sits two levels up from this file (gunstore_mcp/config.py).
+    # .env sits at the repo root, two levels up from gunstore_mcp/config.py.
     env_path = Path(__file__).resolve().parent.parent / ".env"
     if env_path.exists():
         load_dotenv(env_path)
