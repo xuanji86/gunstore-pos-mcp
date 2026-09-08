@@ -91,6 +91,7 @@ CPA_SETTINGS_READ_BLOCKLIST: frozenset[str] = frozenset({
     # than a guarantee this repo makes.
     "GunBroker Settings",
     "Sports South Settings",
+    "Data Service Settings",
 })
 
 

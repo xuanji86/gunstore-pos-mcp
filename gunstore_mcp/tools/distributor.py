@@ -126,7 +126,7 @@ def register(mcp: Any) -> None:
 
     @mcp.tool()
     def distributor_test_connection(distributor: str) -> Any:
-        """Probe one distributor's live dependencies (read-only): the OSA-API
+        """Probe one distributor's live dependencies (read-only): the data-service
         catalog service plus the ordering API credentials (RSR Direct Connect
         accounts / Sports South orders+invoices services). distributor = the
         Distributor record name ('RSR', 'Sports South'). Returns
