@@ -97,6 +97,8 @@ SETTINGS_DOCTYPES = {
 	"GunBroker Settings",
 	# Sports South ordering credentials (account + API password), no accounting purpose.
 	"Sports South Settings",
+	# Data-service HMAC client id + secret, no accounting purpose.
+	"Data Service Settings",
 }
 
 
@@ -197,7 +199,7 @@ class RegistrationLayer(unittest.TestCase):
 	def test_method_allowlist_is_exactly_the_nine_names(self):
 		self.assertEqual(set(CPA_METHOD_ALLOWLIST), EXPECTED_METHOD_ALLOWLIST)
 
-	def test_settings_blocklist_is_exactly_the_nine_doctypes(self):
+	def test_settings_blocklist_is_exactly_the_ten_doctypes(self):
 		self.assertEqual(set(CPA_SETTINGS_READ_BLOCKLIST), SETTINGS_DOCTYPES)
 
 

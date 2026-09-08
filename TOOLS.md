@@ -169,13 +169,13 @@ GunBroker 上一条 listing 就是一把枪。
 
 ## 7. 分销商目录
 
-目录/库存 feed 由 OSA-API 服务端同步(RSR 与 Sports South 都是),POS 侧没有手动同步开关。探活用 `distributor_test_connection`;目录健康看 Desk 的 Catalog Service 页。
+目录/库存 feed 由数据服务(Data Service Settings 所指,线上=osa-api)服务端同步(RSR 与 Sports South 都是),POS 侧没有手动同步开关。探活用 `distributor_test_connection`;目录健康看 Desk 的 Catalog Service 页。
 
 ## 8. 设置 & 文件
 
 | 你想… | 工具 | 说明 |
 |---|---|---|
-| 看某个集成的配置 | `get_settings` | `ffl` \| `fastbound` \| `rsr` \| `payroc` \| `woocommerce` \| `dealer` \| `shipstation` \| `gunbroker` \| `sports_south` |
+| 看某个集成的配置 | `get_settings` | `ffl` \| `fastbound` \| `rsr` \| `payroc` \| `woocommerce` \| `dealer` \| `shipstation` \| `gunbroker` \| `sports_south` \| `data_service` |
 | 改配置（非密钥字段） | `update_settings` | 密码/密钥字段自动剥除，去 Desk 改 |
 | 上传一个本地文件到 POS | `upload_attachment` | 可顺带挂到某条记录（doctype+name）或写进附件字段。默认私有；**要给 Woo 用的商品图必须 `is_private=false`**。批量图片走技能脚本（先 resize） |
 
@@ -217,7 +217,7 @@ GunBroker 上一条 listing 就是一把枪。
 | `distributor_orders` | `distributor.api.list_orders` | 列 Distributor Order,可按 status/分销商筛 |
 | `distributor_route_queue` | `distributor.router.route_queue` | **确认队列**:待确认的 Draft 单 + 被拦下的网单(未付款/买家 FFL 缺失或过期/地址不全)及原因、目的 FFL 到期日。确认任何单之前先读这个 |
 | `distributor_catalog_search` | `distributor.api.search` | 目录 typeahead(本地同步的目录,不是实时库存);不指定分销商时跨所有 enabled 家 |
-| `distributor_test_connection` | `distributor.hub.test_connection` | 探活一家分销商:OSA-API 目录健康 + 下单 API 凭据(RSR Direct Connect 两账户 / Sports South orders+invoices)。只读;`ok: null` = 未配置/不适用,不是失败 |
+| `distributor_test_connection` | `distributor.hub.test_connection` | 探活一家分销商:数据服务目录健康 + 下单 API 凭据(RSR Direct Connect 两账户 / Sports South orders+invoices)。只读;`ok: null` = 未配置/不适用,不是失败 |
 | `distributor_quote` | `distributor.api.quote` | 单品成本/MAP/MSRP/建议价/受限州/封锁旗标;qty 是**缓存目录量**,不保证新鲜度 |
 | `distributor_check_availability` | `distributor.api.check_availability` | **实时**量价二次确认(会打 RSR HTTP,只读) |
 | `distributor_precheck_fds` | `distributor.router.precheck_fds` | 问分销商是否接受发往该 transfer dealer 的 FDS(会打 HTTP,只读) |

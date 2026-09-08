@@ -20,6 +20,7 @@ _SETTINGS = {
     "shipstation": "ShipStation Settings",
     "gunbroker": "GunBroker Settings",
     "sports_south": "Sports South Settings",
+    "data_service": "Data Service Settings",
 }
 
 
@@ -86,7 +87,7 @@ def register(mcp: Any) -> None:
     def get_settings(which: str) -> Any:
         """Read an integration's Settings. which: ffl | fastbound | rsr | payroc |
         woocommerce | dealer (dealer-portal WooCommerce) | shipstation | gunbroker |
-        sports_south.
+        sports_south, data_service.
         Password fields are never returned by Frappe."""
         dt = _resolve(which)
         return get_client().get_document(dt, dt)
@@ -95,7 +96,7 @@ def register(mcp: Any) -> None:
     def update_settings(which: str, values: dict) -> Any:
         """Update an integration's Settings. which: ffl | fastbound | rsr | payroc |
         woocommerce | dealer (dealer-portal WooCommerce) | shipstation | gunbroker |
-        sports_south. Credential/password fields are stripped — set those in Desk.
+        sports_south, data_service. Credential/password fields are stripped — set those in Desk.
         On gunbroker the environment, credential and money fields are refused
         outright (enabled, sandbox_mode, base_url_override, dev_key,
         sandbox_dev_key, username, password, end_strategy, check_deposit_account,
