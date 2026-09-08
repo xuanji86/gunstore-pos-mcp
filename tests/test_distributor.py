@@ -78,19 +78,19 @@ class ActionGate(unittest.TestCase):
             self.assertNotIn(name, tools, f"{name} must not exist unless opted in")
 
     def test_the_read_surface_is_untouched_by_the_gate(self):
-        self.assertEqual(len(_register(None)), 7)
+        self.assertEqual(len(_register(None)), 8)
 
     def test_explicit_opt_in_registers_them(self):
         tools = _register("1")
         for name in _ACTION_TOOLS:
             self.assertIn(name, tools)
-        self.assertEqual(len(tools), 11)
+        self.assertEqual(len(tools), 12)
 
     def test_only_explicitly_truthy_values_open_the_gate(self):
         for on in ("1", "true", "TRUE", "yes", "on", " 1 "):
-            self.assertEqual(len(_register(on)), 11, f"{on!r} should enable")
+            self.assertEqual(len(_register(on)), 12, f"{on!r} should enable")
         for off in ("", "  ", "0", "false", "off", "no"):
-            self.assertEqual(len(_register(off)), 7, f"{off!r} must stay closed")
+            self.assertEqual(len(_register(off)), 8, f"{off!r} must stay closed")
 
     def test_an_unrecognised_value_fails_closed_instead_of_refusing_to_boot(self):
         """GUNSTORE_MCP_MODE refuses to start on a typo because a typo'd 'cpa' would
@@ -98,8 +98,8 @@ class ActionGate(unittest.TestCase):
         is true: anything not explicitly truthy leaves the actions off, so this is
         fail-closed by construction and refusing to boot would cost availability for
         no safety."""
-        self.assertEqual(len(_register("ture")), 7)
-        self.assertEqual(len(_register("enabled")), 7)
+        self.assertEqual(len(_register("ture")), 8)
+        self.assertEqual(len(_register("enabled")), 8)
 
 
 class DistributorTools(unittest.TestCase):
@@ -115,9 +115,9 @@ class DistributorTools(unittest.TestCase):
     # ---- surface ---------------------------------------------------------
 
     def test_distributor_tool_count_pinned(self):
-        # 7 read + 4 queue actions = 11. TOOLS.md / CLAUDE.md / README quote the
-        # TOTAL (79) — if this moves, move all of them too.
-        self.assertEqual(len(self.tools), 11)
+        # 8 read + 4 queue actions = 12. TOOLS.md / CLAUDE.md / README quote the
+        # TOTAL (84) — if this moves, move all of them too.
+        self.assertEqual(len(self.tools), 12)
 
     def test_every_tool_is_namespaced(self):
         for name in self.tools:

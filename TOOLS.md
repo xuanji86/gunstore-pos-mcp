@@ -167,21 +167,15 @@ GunBroker 上一条 listing 就是一把枪。
 | 对账：FastBound 已 dispose 但本店还显示在库 | `boundbook_reconcile` | 干跑不用；`apply=true` 才要 ✅ | 默认只报告不动库存 |
 | 测试 FastBound 连接 | `fastbound_test_connection` | — | 只读 |
 
-## 7. RSR 目录同步
+## 7. 分销商目录
 
-| 你想… | 工具 | confirm |
-|---|---|---|
-| 立刻全量同步 RSR 目录 | `rsr_sync_catalog` | —（后台跑） |
-| 测试 RSR FTPS 连接 | `rsr_test_connection` | — |
-
-（数量增量同步每 15 分钟自动跑；手动触发用
-`frappe_run_method` 调 `ffl_integrations.rsr.tasks.sync_quantity_now`。）
+目录/库存 feed 由 OSA-API 服务端同步(RSR 与 Sports South 都是),POS 侧没有手动同步开关。探活用 `distributor_test_connection`;目录健康看 Desk 的 Catalog Service 页。
 
 ## 8. 设置 & 文件
 
 | 你想… | 工具 | 说明 |
 |---|---|---|
-| 看某个集成的配置 | `get_settings` | `ffl` \| `fastbound` \| `rsr` \| `payroc` \| `woocommerce` \| `dealer` \| `shipstation` |
+| 看某个集成的配置 | `get_settings` | `ffl` \| `fastbound` \| `rsr` \| `payroc` \| `woocommerce` \| `dealer` \| `shipstation` \| `gunbroker` \| `sports_south` |
 | 改配置（非密钥字段） | `update_settings` | 密码/密钥字段自动剥除，去 Desk 改 |
 | 上传一个本地文件到 POS | `upload_attachment` | 可顺带挂到某条记录（doctype+name）或写进附件字段。默认私有；**要给 Woo 用的商品图必须 `is_private=false`**。批量图片走技能脚本（先 resize） |
 
@@ -214,15 +208,16 @@ GunBroker 上一条 listing 就是一把枪。
 | 网单收入发票失败重试 | `ffl_woo_sync.woocommerce.revenue.create_web_invoice_now` |
 | 撤销一笔寄售结算 | `frappe_cancel_document` 取消那张结算 Sales Invoice（钩子自动反开父单） |
 
-## 9b. 分销商直发（RSR Direct Connect）— `distributor_*` 11 个（只读 7 + 动作 4）
+## 9b. 分销商直发（RSR Direct Connect / Sports South）— `distributor_*` 12 个（只读 8 + 动作 4）
 
-只读 7 + 确认队列动作 4。**不含**直接下单(place)、Settings 写、以及 metabox 清单以外的任何变更面。
+只读 8 + 确认队列动作 4。**不含**直接下单(place)、Settings 写、以及 metabox 清单以外的任何变更面。
 
 | 工具 | 服务端方法 | 说明 |
 |---|---|---|
 | `distributor_orders` | `distributor.api.list_orders` | 列 Distributor Order,可按 status/分销商筛 |
 | `distributor_route_queue` | `distributor.router.route_queue` | **确认队列**:待确认的 Draft 单 + 被拦下的网单(未付款/买家 FFL 缺失或过期/地址不全)及原因、目的 FFL 到期日。确认任何单之前先读这个 |
-| `distributor_catalog_search` | `distributor.api.search` | 目录 typeahead(本地同步的目录,不是实时库存) |
+| `distributor_catalog_search` | `distributor.api.search` | 目录 typeahead(本地同步的目录,不是实时库存);不指定分销商时跨所有 enabled 家 |
+| `distributor_test_connection` | `distributor.hub.test_connection` | 探活一家分销商:OSA-API 目录健康 + 下单 API 凭据(RSR Direct Connect 两账户 / Sports South orders+invoices)。只读;`ok: null` = 未配置/不适用,不是失败 |
 | `distributor_quote` | `distributor.api.quote` | 单品成本/MAP/MSRP/建议价/受限州/封锁旗标;qty 是**缓存目录量**,不保证新鲜度 |
 | `distributor_check_availability` | `distributor.api.check_availability` | **实时**量价二次确认(会打 RSR HTTP,只读) |
 | `distributor_precheck_fds` | `distributor.router.precheck_fds` | 问分销商是否接受发往该 transfer dealer 的 FDS(会打 HTTP,只读) |
@@ -249,7 +244,7 @@ GunBroker 上一条 listing 就是一把枪。
 
 ## 10. CPA 模式（只读会计面）+ 报表工具包
 
-**模式开关**：启动环境变量 `GUNSTORE_MCP_MODE=cpa`（默认 `full` = 全部 85 工具中默认注册 78（4 个分销商队列动作 + 3 个 GunBroker 写动作需显式开启），行为与以前完全一致；未知值直接拒绝启动，不会静默降级成可写）。cpa 模式给会计/CPA 用：**写面在工具列表里物理不存在**，不是"存在但会拒绝"。三层防御，缺一层其余仍兜底：
+**模式开关**：启动环境变量 `GUNSTORE_MCP_MODE=cpa`（默认 `full` = 全部 84 工具中默认注册 77（4 个分销商队列动作 + 3 个 GunBroker 写动作需显式开启），行为与以前完全一致；未知值直接拒绝启动，不会静默降级成可写）。cpa 模式给会计/CPA 用：**写面在工具列表里物理不存在**，不是"存在但会拒绝"。三层防御，缺一层其余仍兜底：
 
 1. **注册层**：tools/list 恰好 = 下面 19 个名字（集合相等，测试钉死）；
 2. **客户端层**：一切写方法 + 未逐一列名的点路径方法（`frappe_run_method` 整个不注册）→ `CpaModeRefused`；只读点路径 allowlist 逐一列名，禁通配；
@@ -302,5 +297,5 @@ GunBroker 上一条 listing 就是一把枪。
 
 ---
 
-*工具总数 85（10 个通用 + 58 个专用 + 11 个分销商 + 6 个报表），默认注册 78（4 个分销商队列动作需 `GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1`；3 个 GunBroker 写动作需 `GUNSTORE_MCP_GUNBROKER_ACTIONS=1`）；`GUNSTORE_MCP_MODE=cpa` 只读模式恰注册其中 19 个。对应版本 v0.5.0；工具行为以 README.md
+*工具总数 84（10 个通用 + 56 个专用 + 12 个分销商 + 6 个报表），默认注册 77（4 个分销商队列动作需 `GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1`；3 个 GunBroker 写动作需 `GUNSTORE_MCP_GUNBROKER_ACTIONS=1`）；`GUNSTORE_MCP_MODE=cpa` 只读模式恰注册其中 19 个。对应版本 v0.5.0；工具行为以 README.md
 和源码 `gunstore_mcp/tools/` 为准。*

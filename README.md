@@ -78,7 +78,7 @@ Secrets stay in `.env` (loaded by the server), not in the agent config.
 
 > **中文速查手册（按"你想干什么"组织，含安全须知与替代路径）：[TOOLS.md](TOOLS.md)**
 
-85 tools total: 10 generic + 58 curated + 11 distributor + 6 CPA reports; 78 register by default. Two opt-in sets are held back: the 4 distributor queue actions (`GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1`) and the 3 GunBroker write actions (`GUNSTORE_MCP_GUNBROKER_ACTIONS=1`). Neither is registered otherwise — an absent tool cannot be talked into firing.
+84 tools total: 10 generic + 56 curated + 12 distributor + 6 CPA reports; 77 register by default. Two opt-in sets are held back: the 4 distributor queue actions (`GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1`) and the 3 GunBroker write actions (`GUNSTORE_MCP_GUNBROKER_ACTIONS=1`). Neither is registered otherwise — an absent tool cannot be talked into firing.
 
 **Modes**: `GUNSTORE_MCP_MODE=cpa` starts a read-only accountant surface —
 exactly 19 tools (the write surface is never registered), a per-name read-only
@@ -133,13 +133,13 @@ claude mcp add gunstore-pos-cpa --scope user \
 ### Curated
 | Tool | Purpose |
 |---|---|
-| `get_settings` / `update_settings` | `ffl` \| `fastbound` \| `rsr` \| `payroc` \| `woocommerce` \| `dealer` \| `shipstation` |
+| `get_settings` / `update_settings` | `ffl` \| `fastbound` \| `rsr` \| `payroc` \| `woocommerce` \| `dealer` \| `shipstation` \| `gunbroker` \| `sports_south` |
 | `find_item` / `item_stock` / `available_serials` | typeahead item search / stock per item / in-stock serials + per-gun prices |
 | `firearms_in_stock` | the Firearms In Stock report |
 | `receive_goods` | Purchase Receipt + FFL acquisitions + FastBound push (`confirm`) |
 | `add_stock` / `set_stock` | non-serialized stock add / absolute set (`confirm`) |
 | `toggle_service_need` | gunsmith flag on a Serial No (`confirm`) |
-| `rsr_catalog_search` / `rsr_sync_catalog` / `rsr_test_connection` | RSR catalog search / full sync / FTPS probe |
+| `rsr_catalog_search` | RSR-only catalog search (`distributor_catalog_search` spans every enabled house) |
 | `promote_to_item` / `backfill_from_rsr` | RSR catalog row → sellable Item / backfill Item fields (`confirm`) |
 | `fastbound_test_connection` / `push_serial_to_fastbound` / `boundbook_reconcile` | FB probe / per-gun correction push (`confirm`) / bound-book reconcile (apply needs `confirm`) |
 | `atf_verify_ffl` / `verify_supplier_ffl` / `reverify_all_ffls` | ATF eZ-Check verifies (`confirm`) |

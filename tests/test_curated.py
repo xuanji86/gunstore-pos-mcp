@@ -755,11 +755,11 @@ class CuratedTools(unittest.TestCase):
 
 	def test_curated_tool_count_pinned(self):
 		# This pins the CURATED bucket with the GunBroker actions ON. Total =
-		# 58 curated + 10 generic + 11 distributor + 5 reports = 84, pinned in
+		# 56 curated + 10 generic + 12 distributor + 6 reports = 84, pinned in
 		# test_modes.py::test_full_mode_registers_the_whole_surface_including_the_cpa_18.
 		# The DEFAULT surface is 3 lower here and 7 lower overall (both gates off).
 		# Moving any of these means moving README.md, CLAUDE.md and TOOLS.md.
-		self.assertEqual(len(self.tools), 58)
+		self.assertEqual(len(self.tools), 56)
 
 
 class GunBrokerActionGate(unittest.TestCase):

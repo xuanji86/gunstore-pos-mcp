@@ -1,6 +1,6 @@
 # gunstore-pos-mcp — POS 的 MCP 服务器(Python/uv)
 
-gunstore-pos 平台的 MCP server 源码仓(85 工具 = 10 个通用 Frappe CRUD + 58 个业务工具 + 11 个分销商工具 + 6 个 CPA 报表工具:寄售出库/订单履约/4473/RSR/FastBound/Woo/GunBroker/库存/FFL/财税报表;**默认注册 78 个**——4 个分销商队列动作需 `GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1`、3 个 GunBroker 写动作需 `GUNSTORE_MCP_GUNBROKER_ACTIONS=1` 显式开启,否则物理不注册)。工具清单与语义见 `TOOLS.md`。gunstore-pos 仓的 `.mcp.json` 以 `uv run --directory <本仓> gunstore-mcp` 方式引用。
+gunstore-pos 平台的 MCP server 源码仓(84 工具 = 10 个通用 Frappe CRUD + 56 个业务工具 + 12 个分销商工具 + 6 个 CPA 报表工具:寄售出库/订单履约/4473/RSR/FastBound/Woo/GunBroker/库存/FFL/财税报表;**默认注册 77 个**——4 个分销商队列动作需 `GUNSTORE_MCP_DISTRIBUTOR_ACTIONS=1`、3 个 GunBroker 写动作需 `GUNSTORE_MCP_GUNBROKER_ACTIONS=1` 显式开启,否则物理不注册)。工具清单与语义见 `TOOLS.md`。gunstore-pos 仓的 `.mcp.json` 以 `uv run --directory <本仓> gunstore-mcp` 方式引用。
 
 **模式**:`GUNSTORE_MCP_MODE=cpa` 启动只读会计面(恰 19 工具,写面物理不注册 + client 层方法 allowlist + Settings 读 blocklist 三层防御,见 `gunstore_mcp/modes.py`);默认 `full` 全量。未知模式值拒绝启动(fail-closed)。
 
