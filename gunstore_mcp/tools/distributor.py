@@ -1,5 +1,5 @@
-"""Distributor (RSR Direct Connect) tools — the drop-ship read surface plus the
-human confirmation queue.
+"""Distributor (RSR Direct Connect / Sports South) tools — the drop-ship read
+surface plus the human confirmation queue.
 
 Every method below was checked against gunstore-pos `origin/develop` before being
 wrapped, per this repo's standing rule: the MCP is a thin wrapper and its tests are
@@ -40,6 +40,7 @@ from ..safety import require_confirm, require_reason
 _API = "ffl_integrations.distributor.api."
 _ROUTER = "ffl_integrations.distributor.router."
 _OPTIONS = "ffl_integrations.distributor.options."
+_HUB = "ffl_integrations.distributor.hub."
 
 ACTIONS_ENV = "GUNSTORE_MCP_DISTRIBUTOR_ACTIONS"
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
@@ -122,6 +123,16 @@ def register(mcp: Any) -> None:
             _API + "check_availability",
             {"lines": lines, "distributor": distributor},
         )
+
+    @mcp.tool()
+    def distributor_test_connection(distributor: str) -> Any:
+        """Probe one distributor's live dependencies (read-only): the OSA-API
+        catalog service plus the ordering API credentials (RSR Direct Connect
+        accounts / Sports South orders+invoices services). distributor = the
+        Distributor record name ('RSR', 'Sports South'). Returns
+        {checks: [{label, ok: true|false|null, detail}]}; null = not
+        configured / not applicable, not a failure."""
+        return get_client().call_method(_HUB + "test_connection", {"distributor": distributor})
 
     @mcp.tool()
     def distributor_precheck_fds(do_name: str) -> Any:

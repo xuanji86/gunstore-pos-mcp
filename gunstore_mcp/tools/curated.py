@@ -19,6 +19,7 @@ _SETTINGS = {
     "dealer": "Dealer WooCommerce Settings",
     "shipstation": "ShipStation Settings",
     "gunbroker": "GunBroker Settings",
+    "sports_south": "Sports South Settings",
 }
 
 
@@ -84,7 +85,8 @@ def register(mcp: Any) -> None:
     @mcp.tool()
     def get_settings(which: str) -> Any:
         """Read an integration's Settings. which: ffl | fastbound | rsr | payroc |
-        woocommerce | dealer (dealer-portal WooCommerce) | shipstation | gunbroker.
+        woocommerce | dealer (dealer-portal WooCommerce) | shipstation | gunbroker |
+        sports_south.
         Password fields are never returned by Frappe."""
         dt = _resolve(which)
         return get_client().get_document(dt, dt)
@@ -92,8 +94,8 @@ def register(mcp: Any) -> None:
     @mcp.tool()
     def update_settings(which: str, values: dict) -> Any:
         """Update an integration's Settings. which: ffl | fastbound | rsr | payroc |
-        woocommerce | dealer (dealer-portal WooCommerce) | shipstation | gunbroker.
-        Credential/password fields are stripped — set those in Desk.
+        woocommerce | dealer (dealer-portal WooCommerce) | shipstation | gunbroker |
+        sports_south. Credential/password fields are stripped — set those in Desk.
         On gunbroker the environment, credential and money fields are refused
         outright (enabled, sandbox_mode, base_url_override, dev_key,
         sandbox_dev_key, username, password, end_strategy, check_deposit_account,
@@ -102,16 +104,6 @@ def register(mcp: Any) -> None:
         check_fields_writable(dt, values)
         clean, stripped = strip_passwords(dt, values)
         return stripped_note(get_client().update_document(dt, dt, clean), stripped)
-
-    @mcp.tool()
-    def rsr_sync_catalog() -> Any:
-        """Trigger a full RSR catalog sync. Runs in the background — returns once queued."""
-        return get_client().call_method("ffl_integrations.rsr.tasks.sync_catalog_now")
-
-    @mcp.tool()
-    def rsr_test_connection() -> Any:
-        """Probe the RSR FTPS connection + configuration (read-only)."""
-        return get_client().call_method("ffl_integrations.rsr.tasks.test_connection")
 
     @mcp.tool()
     def fastbound_test_connection() -> Any:
@@ -403,8 +395,9 @@ def register(mcp: Any) -> None:
     @mcp.tool()
     def rsr_catalog_search(query: str, limit: int = 10) -> Any:
         """Search the RSR distributor CATALOG (not local stock) by keyword / RSR
-        stock # / UPC / MFG #. Use find_item for items already in this store.
-        Read-only. Promote a catalog row to a sellable Item with promote_to_item."""
+        stock # / UPC / MFG #. RSR only — distributor_catalog_search spans every
+        enabled house (RSR + Sports South). Use find_item for items already in
+        this store. Read-only. Promote a catalog row with promote_to_item."""
         return get_client().call_method(
             "ffl_integrations.rsr.search.search", {"query": query, "limit": limit}
         )

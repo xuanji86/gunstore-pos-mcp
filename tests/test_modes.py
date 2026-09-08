@@ -4,7 +4,7 @@ Layer 1 — registration: GUNSTORE_MCP_MODE=cpa registers EXACTLY the 19-name
 allowlist (set equality, per spec acceptance #1 — not merely "no write tools").
 Layer 2 — client: mutating client methods + non-allowlisted dotted methods
 raise CpaModeRefused before any HTTP.
-Layer 3 — the 8 integration Settings doctypes refuse get/list reads in cpa mode.
+Layer 3 — the 9 integration Settings doctypes refuse get/list reads in cpa mode.
 Full mode must behave exactly as before (no refusals); its size is pinned below and
 in tests/test_doc_counts.py rather than restated here in prose, because a number
 written into a docstring is exactly the kind that goes stale unnoticed.
@@ -95,6 +95,8 @@ SETTINGS_DOCTYPES = {
 	# PR-4a: holds the GunBroker DevKey + seller password (Password fields), and
 	# has no accounting purpose — same reasoning as every other row here.
 	"GunBroker Settings",
+	# Sports South ordering credentials (account + API password), no accounting purpose.
+	"Sports South Settings",
 }
 
 
@@ -117,14 +119,14 @@ class RegistrationLayer(unittest.TestCase):
 		self.assertEqual(len(mcp.tools), 19)
 
 	def test_default_full_mode_holds_both_opt_in_sets_back(self):
-		"""Default full mode is 78, not 85: the 4 distributor queue actions and the
+		"""Default full mode is 77, not 84: the 4 distributor queue actions and the
 		3 GunBroker write actions each require an explicit opt-in. Pinned separately
 		from the full surface so that turning either gate into a no-op would break a
 		test rather than quietly restore the wider surface."""
 		mcp = FakeMCP()
 		with _actions(None):
 			server.register_tools(mcp, mode="full")
-		self.assertEqual(len(mcp.tools), 78)
+		self.assertEqual(len(mcp.tools), 77)
 		for name in ("distributor_confirm_order", "distributor_cancel_order",
 				"distributor_reroute", "distributor_update_order_ffl",
 				"gb_push_serial", "gb_end_listing", "gb_pull_orders"):
@@ -164,7 +166,7 @@ class RegistrationLayer(unittest.TestCase):
 		mcp = FakeMCP()
 		with _actions("1", gb="1"):
 			server.register_tools(mcp, mode="full")
-		self.assertEqual(len(mcp.tools), 85)
+		self.assertEqual(len(mcp.tools), 84)
 		self.assertTrue(EXPECTED_CPA_TOOLS <= set(mcp.tools))
 		# regression: none of the write faces leaked out of full mode
 		for name in ("frappe_run_method", "dispose_order", "receive_goods",
@@ -180,7 +182,7 @@ class RegistrationLayer(unittest.TestCase):
 			"upload_attachment", "get_settings", "update_settings",
 			"available_serials",  # cpa-review OQ-3: 盘点语境默认剔除,误导
 			"rsr_catalog_search",
-			"rsr_test_connection", "fastbound_test_connection",
+			"distributor_test_connection", "fastbound_test_connection",
 			"woo_test_connection", "shipstation_test_connection",
 			# PR-4a/4b: the GunBroker channel is a sales surface, not an accounting
 			# one; three of these write (two to a live marketplace, one starts the
@@ -195,7 +197,7 @@ class RegistrationLayer(unittest.TestCase):
 	def test_method_allowlist_is_exactly_the_nine_names(self):
 		self.assertEqual(set(CPA_METHOD_ALLOWLIST), EXPECTED_METHOD_ALLOWLIST)
 
-	def test_settings_blocklist_is_exactly_the_eight_doctypes(self):
+	def test_settings_blocklist_is_exactly_the_nine_doctypes(self):
 		self.assertEqual(set(CPA_SETTINGS_READ_BLOCKLIST), SETTINGS_DOCTYPES)
 
 

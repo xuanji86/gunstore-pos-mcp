@@ -175,7 +175,7 @@ def register(mcp: Any) -> None:
     @mcp.tool()
     def frappe_run_method(method: str, kwargs: dict | None = None, confirm: bool = False) -> Any:
         """Call any whitelisted server method by dotted path, e.g.
-        'ffl_integrations.rsr.tasks.sync_catalog_now'. Generic Frappe mutators
+        'ffl_integrations.distributor.listing.sync_listings'. Generic Frappe mutators
         (frappe.client.set_value/insert/save/delete/bulk_update/...) are refused —
         use the structured frappe_*_document tools, which enforce the guards.
         Methods whose name implies a destructive action — or that are on the

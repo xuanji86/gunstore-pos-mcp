@@ -223,7 +223,7 @@ class EveryWritePath(unittest.TestCase):
         self.tools["frappe_update_document"](DT, DT, {"page_size": 50})
         self.assertEqual(self.client.calls[-1],
             ("PUT", DT, DT, {"page_size": 50}))
-        self.tools["frappe_run_method"]("ffl_integrations.rsr.tasks.sync_catalog_now")
+        self.tools["frappe_run_method"]("ffl_integrations.distributor.listing.sync_listings")
         self.tools["frappe_run_method"](
             "some.app.get_value", {"doctype": DT, "fieldname": "sandbox_mode"})
 
