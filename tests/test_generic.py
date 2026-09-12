@@ -52,10 +52,10 @@ class RunMethodGuards(unittest.TestCase):
 		# them, so they are gated by EXACT dotted name.
 		for method in (
 			"ffl_core.api.manual_order.update_order",
-			"ffl_core.api.consignment_out.update_consignment_line_prices",
-			"ffl_core.api.consignment_out.create_consignment_out",
+			"osa_consignment.api.consignment_out.update_consignment_line_prices",
+			"osa_consignment.api.consignment_out.create_consignment_out",
 			"ffl_core.api.manual_order.record_payment",
-			"ffl_core.api.consignment_orders.create_consignment_invoice_now",
+			"osa_consignment.api.dealer_orders.create_consignment_invoice_now",
 			"ffl_core.api.item_admin.add_stock",
 			"ffl_core.api.item_admin.set_stock",
 			"ffl_core.api.manual_order.set_customer_tax_exempt",
@@ -85,13 +85,13 @@ class RunMethodGuards(unittest.TestCase):
 		# onboard / receive) that the original regex missed — a bare
 		# frappe_run_method call could dispose stock or mint invoices unconfirmed.
 		for method in (
-			"ffl_core.api.consignment_out.ship_consignment_out",
-			"ffl_core.api.consignment_out.mark_consignment_shipped_manually",
-			"ffl_core.api.consignment_out.return_consignment_lines",
-			"ffl_core.api.consignment_out.cancel_consignment_out",
-			"ffl_core.api.consignment_portal.mark_sold",
-			"ffl_core.api.consignment_portal.mark_received",
-			"ffl_core.api.dealer_onboarding.onboard_dealer",
+			"osa_consignment.api.consignment_out.ship_consignment_out",
+			"osa_consignment.api.consignment_out.mark_consignment_shipped_manually",
+			"osa_consignment.api.consignment_out.return_consignment_lines",
+			"osa_consignment.api.consignment_out.cancel_consignment_out",
+			"osa_consignment.api.portal.mark_sold",
+			"osa_consignment.api.portal.mark_received",
+			"osa_consignment.api.dealer_onboarding.onboard_dealer",
 			"ffl_core.api.receive_goods.create_receive",
 			"ffl_core.api.manual_order.mark_shipped_manually",
 		):
@@ -102,10 +102,10 @@ class RunMethodGuards(unittest.TestCase):
 
 	def test_consignment_reads_stay_ungated(self):
 		for method in (
-			"ffl_core.api.consignment_out.list_consignment_queue",
-			"ffl_core.api.consignment_out.list_consignment_dealers",
-			"ffl_core.api.consignment_out.available_serials_for_consignment",
-			"ffl_core.api.consignment_orders.list_dealer_orders",
+			"osa_consignment.api.consignment_out.list_consignment_queue",
+			"osa_consignment.api.consignment_out.list_consignment_dealers",
+			"osa_consignment.api.consignment_out.available_serials_for_consignment",
+			"osa_consignment.api.dealer_orders.list_dealer_orders",
 		):
 			self.run_method(method)
 			self.assertEqual(self.client.calls[-1][1], method)

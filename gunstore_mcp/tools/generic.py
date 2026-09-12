@@ -48,10 +48,10 @@ _DESTRUCTIVE_METHOD = re.compile(
 # check it against this criterion.
 _ALWAYS_CONFIRM_METHODS = {
     "ffl_core.api.manual_order.update_order",
-    "ffl_core.api.consignment_out.update_consignment_line_prices",
-    "ffl_core.api.consignment_out.create_consignment_out",
+    "osa_consignment.api.consignment_out.update_consignment_line_prices",
+    "osa_consignment.api.consignment_out.create_consignment_out",
     "ffl_core.api.manual_order.record_payment",
-    "ffl_core.api.consignment_orders.create_consignment_invoice_now",
+    "osa_consignment.api.dealer_orders.create_consignment_invoice_now",
     "ffl_core.api.item_admin.add_stock",
     "ffl_core.api.item_admin.set_stock",
     "ffl_core.api.manual_order.set_customer_tax_exempt",

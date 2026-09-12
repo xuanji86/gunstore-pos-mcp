@@ -570,7 +570,7 @@ class CuratedTools(unittest.TestCase):
 	def test_consignment_queue_read_only(self):
 		self.tools["consignment_queue"]()
 		self.assertEqual(self._last(), (
-			"call_method", "ffl_core.api.consignment_out.list_consignment_queue",
+			"call_method", "osa_consignment.api.consignment_out.list_consignment_queue",
 			{"include_closed": 0},
 		))
 		self.tools["consignment_queue"](include_closed=True)
@@ -580,14 +580,14 @@ class CuratedTools(unittest.TestCase):
 		self.tools["consignment_dealers"]()
 		self.assertEqual(self._last(), (
 			"call_method",
-			"ffl_core.api.consignment_out.list_consignment_dealers", {},
+			"osa_consignment.api.consignment_out.list_consignment_dealers", {},
 		))
 
 	def test_consignment_serials_read_only(self):
 		self.tools["consignment_serials"](item_code="GLK19", search="G19", limit=10)
 		self.assertEqual(self._last(), (
 			"call_method",
-			"ffl_core.api.consignment_out.available_serials_for_consignment",
+			"osa_consignment.api.consignment_out.available_serials_for_consignment",
 			{"item_code": "GLK19", "search": "G19", "limit": 10},
 		))
 
@@ -595,7 +595,7 @@ class CuratedTools(unittest.TestCase):
 		self.tools["consignment_dealer_orders"]()
 		self.assertEqual(self._last(), (
 			"call_method",
-			"ffl_core.api.consignment_orders.list_dealer_orders", {},
+			"osa_consignment.api.dealer_orders.list_dealer_orders", {},
 		))
 
 	# ----------------------------------------- K: consignment out (寄售) writes
@@ -608,7 +608,7 @@ class CuratedTools(unittest.TestCase):
 		self.assertEqual(self.client.calls, [])
 		self.tools["create_consignment_out"](payload, confirm=True)
 		self.assertEqual(self._last(), (
-			"call_method", "ffl_core.api.consignment_out.create_consignment_out",
+			"call_method", "osa_consignment.api.consignment_out.create_consignment_out",
 			{"payload": payload},
 		))
 
@@ -618,7 +618,7 @@ class CuratedTools(unittest.TestCase):
 		self.assertEqual(self.client.calls, [])
 		self.tools["ship_consignment_out"]("CONO-0001", confirm=True)
 		self.assertEqual(self._last(), (
-			"call_method", "ffl_core.api.consignment_out.ship_consignment_out",
+			"call_method", "osa_consignment.api.consignment_out.ship_consignment_out",
 			{"consignment_out": "CONO-0001"},
 		))
 
@@ -629,7 +629,7 @@ class CuratedTools(unittest.TestCase):
 		self.tools["push_consignment_shipment"]("CONO-0001", confirm=True)
 		self.assertEqual(self._last(), (
 			"call_method",
-			"ffl_integrations.shipstation.api.push_consignment_shipment",
+			"osa_consignment.shipping.push_consignment_shipment",
 			{"consignment_out": "CONO-0001"},
 		))
 
@@ -641,7 +641,7 @@ class CuratedTools(unittest.TestCase):
 			tracking_number="1Z999", carrier="UPS", confirm=True)
 		self.assertEqual(self._last(), (
 			"call_method",
-			"ffl_core.api.consignment_out.mark_consignment_shipped_manually",
+			"osa_consignment.api.consignment_out.mark_consignment_shipped_manually",
 			{"consignment_out": "CONO-0001", "tracking_number": "1Z999",
 			 "carrier": "UPS"},
 		))
@@ -653,7 +653,7 @@ class CuratedTools(unittest.TestCase):
 		self.tools["retry_consignment_invoice"]("LINE-1", confirm=True)
 		self.assertEqual(self._last(), (
 			"call_method",
-			"ffl_core.api.consignment_orders.create_consignment_invoice_now",
+			"osa_consignment.api.dealer_orders.create_consignment_invoice_now",
 			{"line": "LINE-1"},
 		))
 
@@ -665,7 +665,7 @@ class CuratedTools(unittest.TestCase):
 			to_warehouse="Main - OSA", confirm=True)
 		self.assertEqual(self._last(), (
 			"call_method",
-			"ffl_core.api.consignment_out.return_consignment_lines",
+			"osa_consignment.api.consignment_out.return_consignment_lines",
 			{"consignment_out": "CONO-0001", "lines": ["L1", "L2"],
 			 "to_warehouse": "Main - OSA"},
 		))
@@ -677,7 +677,7 @@ class CuratedTools(unittest.TestCase):
 		self.tools["cancel_consignment"]("CONO-0001", "built by mistake",
 			confirm=True)
 		self.assertEqual(self._last(), (
-			"call_method", "ffl_core.api.consignment_out.cancel_consignment_out",
+			"call_method", "osa_consignment.api.consignment_out.cancel_consignment_out",
 			{"consignment_out": "CONO-0001", "reason": "built by mistake"},
 		))
 
@@ -685,7 +685,7 @@ class CuratedTools(unittest.TestCase):
 		self.tools["cancel_consignment"]("CONO-0001", "wrong gun", line="L1",
 			confirm=True)
 		self.assertEqual(self._last(), (
-			"call_method", "ffl_core.api.consignment_out.cancel_consignment_line",
+			"call_method", "osa_consignment.api.consignment_out.cancel_consignment_line",
 			{"consignment_out": "CONO-0001", "line": "L1", "reason": "wrong gun"},
 		))
 
@@ -719,7 +719,7 @@ class CuratedTools(unittest.TestCase):
 			"CONO-0007", {"LINE-1": {"cost": 500, "msrp": 650}}, confirm=True)
 		self.assertEqual(self._last(), (
 			"call_method",
-			"ffl_core.api.consignment_out.update_consignment_line_prices",
+			"osa_consignment.api.consignment_out.update_consignment_line_prices",
 			{"consignment_out": "CONO-0007",
 			 "prices": {"LINE-1": {"cost": 500, "msrp": 650}}},
 		))

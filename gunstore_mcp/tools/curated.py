@@ -676,7 +676,7 @@ def register(mcp: Any) -> None:
         (which excludes consignment invoices). include_closed=true also returns
         Closed/Cancelled history. Read-only."""
         return get_client().call_method(
-            "ffl_core.api.consignment_out.list_consignment_queue",
+            "osa_consignment.api.consignment_out.list_consignment_queue",
             {"include_closed": 1 if include_closed else 0},
         )
 
@@ -687,7 +687,7 @@ def register(mcp: Any) -> None:
         gate ship_consignment_out enforces). Use before building a consignment.
         Read-only."""
         return get_client().call_method(
-            "ffl_core.api.consignment_out.list_consignment_dealers"
+            "osa_consignment.api.consignment_out.list_consignment_dealers"
         )
 
     @mcp.tool()
@@ -700,7 +700,7 @@ def register(mcp: Any) -> None:
         (blocked rows are returned greyed, not hidden). Filter by item_code
         and/or a search string. Read-only."""
         return get_client().call_method(
-            "ffl_core.api.consignment_out.available_serials_for_consignment",
+            "osa_consignment.api.consignment_out.available_serials_for_consignment",
             {"item_code": item_code, "search": search, "limit": limit},
         )
 
@@ -711,7 +711,7 @@ def register(mcp: Any) -> None:
         Failed rows sort first. Retry a failed settlement invoice with
         retry_consignment_invoice. Read-only."""
         return get_client().call_method(
-            "ffl_core.api.consignment_orders.list_dealer_orders"
+            "osa_consignment.api.dealer_orders.list_dealer_orders"
         )
 
     @mcp.tool()
@@ -725,7 +725,7 @@ def register(mcp: Any) -> None:
         consignment_dealers / consignment_serials. Consequential — confirm=true."""
         require_confirm("create_consignment_out", confirm)
         return get_client().call_method(
-            "ffl_core.api.consignment_out.create_consignment_out",
+            "osa_consignment.api.consignment_out.create_consignment_out",
             {"payload": payload},
         )
 
@@ -738,7 +738,7 @@ def register(mcp: Any) -> None:
         dealer FFL. VERIFY the dealer + serials first. confirm=true."""
         require_confirm(f"ship_consignment_out {consignment_out}", confirm)
         return get_client().call_method(
-            "ffl_core.api.consignment_out.ship_consignment_out",
+            "osa_consignment.api.consignment_out.ship_consignment_out",
             {"consignment_out": consignment_out},
         )
 
@@ -750,7 +750,7 @@ def register(mcp: Any) -> None:
         of the Dispose step. confirm=true."""
         require_confirm(f"push_consignment_shipment {consignment_out}", confirm)
         return get_client().call_method(
-            "ffl_integrations.shipstation.api.push_consignment_shipment",
+            "osa_consignment.shipping.push_consignment_shipment",
             {"consignment_out": consignment_out},
         )
 
@@ -766,7 +766,7 @@ def register(mcp: Any) -> None:
         shows it. confirm=true."""
         require_confirm(f"mark_consignment_shipped {consignment_out}", confirm)
         return get_client().call_method(
-            "ffl_core.api.consignment_out.mark_consignment_shipped_manually",
+            "osa_consignment.api.consignment_out.mark_consignment_shipped_manually",
             {"consignment_out": consignment_out,
              "tracking_number": tracking_number, "carrier": carrier},
         )
@@ -782,7 +782,7 @@ def register(mcp: Any) -> None:
         confirm=true."""
         require_confirm(f"retry_consignment_invoice {line}", confirm)
         return get_client().call_method(
-            "ffl_core.api.consignment_orders.create_consignment_invoice_now",
+            "osa_consignment.api.dealer_orders.create_consignment_invoice_now",
             {"line": line},
         )
 
@@ -797,7 +797,7 @@ def register(mcp: Any) -> None:
         Line names. confirm=true."""
         require_confirm(f"return_consignment_lines {consignment_out}", confirm)
         return get_client().call_method(
-            "ffl_core.api.consignment_out.return_consignment_lines",
+            "osa_consignment.api.consignment_out.return_consignment_lines",
             {"consignment_out": consignment_out, "lines": lines,
              "to_warehouse": to_warehouse},
         )
@@ -816,11 +816,11 @@ def register(mcp: Any) -> None:
         reason = require_reason(f"cancel_consignment {consignment_out}", reason)
         if line:
             return get_client().call_method(
-                "ffl_core.api.consignment_out.cancel_consignment_line",
+                "osa_consignment.api.consignment_out.cancel_consignment_line",
                 {"consignment_out": consignment_out, "line": line, "reason": reason},
             )
         return get_client().call_method(
-            "ffl_core.api.consignment_out.cancel_consignment_out",
+            "osa_consignment.api.consignment_out.cancel_consignment_out",
             {"consignment_out": consignment_out, "reason": reason},
         )
 
@@ -840,7 +840,7 @@ def register(mcp: Any) -> None:
         Line names come from consignment_queue. confirm=true."""
         require_confirm(f"update_consignment_prices {consignment_out}", confirm)
         return get_client().call_method(
-            "ffl_core.api.consignment_out.update_consignment_line_prices",
+            "osa_consignment.api.consignment_out.update_consignment_line_prices",
             {"consignment_out": consignment_out, "prices": prices},
         )
 
