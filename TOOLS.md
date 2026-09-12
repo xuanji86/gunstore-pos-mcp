@@ -204,7 +204,7 @@ GunBroker 上一条 listing 就是一把枪。
 | 查/设客户免税状态 | `ffl_core.api.manual_order.get_customer_tax_status` / `set_customer_tax_exempt` |
 | Woo 部分退款对账（Woo 退了款、POS 侧对齐） | `ffl_woo_sync.woocommerce.refunds.reconcile_web_order_refund`（要 confirm） |
 | 清理指向已删 Woo 商品的 dangling ID | `ffl_woo_sync.woocommerce.dangling.woo_audit_dangling_ids`（`fix=0` 干跑只报告） |
-| 经销商开户（FFL 查询 → 建 Customer+门户账号） | `ffl_core.api.dealer_onboarding.lookup_ffl` → `onboard_dealer`（要 confirm） |
+| 经销商开户（FFL 查询 → 建 Customer+门户账号） | `osa_consignment.api.dealer_onboarding.lookup_ffl` → `onboard_dealer`（要 confirm） |
 | 网单收入发票失败重试 | `ffl_woo_sync.woocommerce.revenue.create_web_invoice_now` |
 | 撤销一笔寄售结算 | `frappe_cancel_document` 取消那张结算 Sales Invoice（钩子自动反开父单） |
 

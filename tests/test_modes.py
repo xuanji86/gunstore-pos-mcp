@@ -83,10 +83,10 @@ EXPECTED_METHOD_ALLOWLIST = {
 	"ffl_core.api.item_admin.get_item_stock",
 	"ffl_core.api.manual_order.list_pending_dispositions",
 	"ffl_woo_sync.woocommerce.fulfillment.list_pending_web_orders",
-	"ffl_core.api.consignment_out.list_consignment_queue",
-	"ffl_core.api.consignment_out.list_consignment_dealers",
-	"ffl_core.api.consignment_out.available_serials_for_consignment",
-	"ffl_core.api.consignment_orders.list_dealer_orders",
+	"osa_consignment.api.consignment_out.list_consignment_queue",
+	"osa_consignment.api.consignment_out.list_consignment_dealers",
+	"osa_consignment.api.consignment_out.available_serials_for_consignment",
+	"osa_consignment.api.dealer_orders.list_dealer_orders",
 }
 
 SETTINGS_DOCTYPES = {
