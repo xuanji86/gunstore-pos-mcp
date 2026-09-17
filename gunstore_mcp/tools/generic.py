@@ -55,6 +55,8 @@ _ALWAYS_CONFIRM_METHODS = {
     "ffl_core.api.item_admin.add_stock",
     "ffl_core.api.item_admin.set_stock",
     "ffl_core.api.manual_order.set_customer_tax_exempt",
+    # Places every Draft distributor leg of a counter order — a real purchase.
+    "ffl_core.api.manual_order.release_order_legs",
 }
 
 # Frappe globally whitelists these generic mutators at /api/method — reaching
