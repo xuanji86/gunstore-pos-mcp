@@ -59,6 +59,7 @@ class RunMethodGuards(unittest.TestCase):
 			"ffl_core.api.item_admin.add_stock",
 			"ffl_core.api.item_admin.set_stock",
 			"ffl_core.api.manual_order.set_customer_tax_exempt",
+			"ffl_core.api.manual_order.release_order_legs",
 		):
 			with self.assertRaises(WriteRefused, msg=method):
 				self.run_method(method)

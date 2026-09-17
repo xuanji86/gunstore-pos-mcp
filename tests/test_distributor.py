@@ -214,7 +214,13 @@ class DistributorTools(unittest.TestCase):
                                                confirm=True)
         method, args = self.client.calls[0]
         self.assertEqual(method, "ffl_integrations.distributor.api.cancel_order")
-        self.assertEqual(args, {"do_name": "DO-1", "reason": "dup"})
+        self.assertEqual(args, {"do_name": "DO-1", "reason": "dup", "confirmed": 0})
+
+    def test_cancel_passes_the_distributor_confirmation(self):
+        self.tools["distributor_cancel_order"](do_name="DO-1", reason="house cancelled",
+                                               distributor_confirmed=True, confirm=True)
+        _method, args = self.client.calls[0]
+        self.assertEqual(args["confirmed"], 1)
 
     def test_reroute_refuses_without_confirm(self):
         with self.assertRaises(WriteRefused):

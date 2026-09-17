@@ -16,8 +16,8 @@ Split by consequence, because "queue operations" spans a wide range:
   explicitly truthy (default: off), and on top of that ``confirm`` is required on
   every one of them — it is not ceremony:
   `confirm_order` transitions Draft → Queued **and enqueues the placement worker**,
-  i.e. it is the moment a real purchase from RSR becomes inevitable. RSR has no
-  cancel API, so there is no undo after that.
+  i.e. it is the moment a real purchase from the distributor becomes inevitable.
+  Cancelling here never reaches the house, so there is no undo after that.
 
 Deliberately NOT exposed: direct placement, settings writes, and anything outside the
 metabox's clientele.
@@ -68,7 +68,8 @@ def register(mcp: Any) -> None:
     def distributor_orders(
         status: str | None = None, distributor: str | None = None, limit: int = 50
     ) -> Any:
-        """List Distributor Orders (drop-ship / restock purchase orders to RSR).
+        """List Distributor Orders (drop-ship / ship-to-store / restock purchase
+        orders to a distributor).
         status: Draft | Queued | Placed | Acknowledged | Hold | Partially Shipped |
         Complete | Cancelled | Error (empty = all). Read-only."""
         return get_client().call_method(
@@ -117,7 +118,7 @@ def register(mcp: Any) -> None:
     ) -> Any:
         """LIVE quantity/price re-confirm straight from the distributor for the given
         lines ([{sku, qty}, …]). Changes nothing, but unlike distributor_quote it
-        does reach RSR over HTTP — use it to second-check before confirming an order,
+        does reach the distributor over HTTP — use it to second-check before confirming an order,
         not to browse."""
         return get_client().call_method(
             _API + "check_availability",
@@ -138,7 +139,7 @@ def register(mcp: Any) -> None:
     def distributor_precheck_fds(do_name: str) -> Any:
         """Ask the distributor whether the transfer dealer named on this FDS order
         accepts drop-shipped firearms — the cheapest way to avoid an FDS Hold.
-        Reaches RSR over HTTP; changes nothing."""
+        Reaches the distributor over HTTP; changes nothing."""
         return get_client().call_method(_ROUTER + "precheck_fds", {"do_name": do_name})
 
     @mcp.tool()
@@ -195,26 +196,32 @@ def register(mcp: Any) -> None:
         worker runs.
 
         ⚠ This is the point of no return. It causes a REAL purchase from the
-        distributor, and RSR has **no cancel API** — after placement, undoing it is a
-        phone call and a return, not a status change. A counter-sourced order is also
-        gated on its invoice being paid in full and will refuse otherwise.
-        Read distributor_route_queue first. Requires confirm=true."""
+        distributor, and cancelling here never reaches the house — after placement,
+        undoing it is a phone call and a return, not a status change. A
+        counter-sourced DROP-SHIP order is also gated on its invoice being paid in
+        full and will refuse otherwise; a ship-to-store order may be placed on a
+        deposit. Read distributor_route_queue first. Requires confirm=true."""
         require_confirm(f"confirm distributor order {do_name} (places a real order)",
                         confirm)
         return get_client().call_method(_API + "confirm_order", {"do_name": do_name})
 
     @mcp.tool()
     def distributor_cancel_order(
-        do_name: str, reason: str, confirm: bool = False
+        do_name: str, reason: str, distributor_confirmed: bool = False,
+        confirm: bool = False,
     ) -> Any:
-        """Cancel a Distributor Order. Safe only BEFORE placement (Draft/Queued): the
-        server will still mark a live order Cancelled but alerts operations, because
-        the goods are already moving and the distributor has no cancel API — the
-        return is a manual process. Requires a reason and confirm=true."""
+        """Cancel a Distributor Order here. Cancelling never reaches the house: safe
+        BEFORE placement (Draft/Queued); a live order is still marked Cancelled but
+        operations are alerted to arrange it with the distributor — unless
+        distributor_confirmed=true records that the house has already confirmed the
+        cancellation (phone / email), which skips that alert. Requires a reason and
+        confirm=true."""
         reason = require_reason(f"cancel distributor order {do_name}", reason)
         require_confirm(f"cancel distributor order {do_name}", confirm)
         return get_client().call_method(
-            _API + "cancel_order", {"do_name": do_name, "reason": reason}
+            _API + "cancel_order",
+            {"do_name": do_name, "reason": reason,
+             "confirmed": 1 if distributor_confirmed else 0},
         )
 
     @mcp.tool()
@@ -237,7 +244,7 @@ def register(mcp: Any) -> None:
         way to release an FDS Hold. The new licence is re-validated through the same
         canonical chain the counter uses (unexpired, complete premise address) BEFORE
         the distributor is called, so an expired licence is refused rather than
-        released onto. Calls RSR. Requires confirm=true."""
+        released onto. Calls the distributor. Requires confirm=true."""
         require_confirm(f"update transfer FFL on {do_name} to {ffl_license}", confirm)
         return get_client().call_method(
             _ROUTER + "update_order_ffl",
