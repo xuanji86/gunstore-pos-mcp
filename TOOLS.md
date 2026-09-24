@@ -119,7 +119,7 @@ GunBroker 上一条 listing 就是一把枪。
 
 | 你想… | 工具 | confirm | 说明 |
 |---|---|---|---|
-| 给没付清的单子记一笔收款 | `record_payment` | ✅ | 不填金额=收清尾款；Zelle 必须带 transaction_number |
+| 给没付清的单子记一笔收款 | `record_payment` | ✅ | 不填金额=收清尾款；Zelle/ACH 必须带 transaction_number;Payroc 开着时 Credit Card(虚拟终端收的)也必须带授权码 |
 | **Dispose** 柜台/经销商订单的枪 | `dispose_order` | ✅ | 逐把登转出 disposition：出库存 + 推 FastBound。没付清或收货方 FFL 无效会被服务器拦下。**动手前先核对 FFL 和序列号** |
 | **Dispose** 网店订单的枪 | `dispose_web_order` | ✅ | 网店单不推 ShipStation（店里的 Woo 插件自己发货） |
 | 把订单推到 ShipStation 买面单 | `push_shipment` | ✅ | 幂等；FFL 无效/没付清会失败保护 |

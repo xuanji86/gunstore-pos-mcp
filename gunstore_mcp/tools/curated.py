@@ -581,8 +581,10 @@ def register(mcp: Any) -> None:
     ) -> Any:
         """Record a later payment against a submitted, not-fully-paid Sales Invoice
         — books + submits a Payment Entry and returns the new balance. amount
-        omitted = the full outstanding; mode_of_payment 'Zelle' requires
-        transaction_number. confirm=true."""
+        omitted = the full outstanding; mode_of_payment 'Zelle' / 'ACH' require
+        transaction_number, and so does 'Credit Card' while Payroc is live (the
+        Virtual Terminal approval code — terminal charges book themselves) or on
+        a standalone terminal with approval codes required. confirm=true."""
         require_confirm(f"record_payment {sales_invoice}", confirm)
         return get_client().call_method(
             "ffl_core.api.manual_order.record_payment",
