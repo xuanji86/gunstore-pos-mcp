@@ -141,7 +141,7 @@ class DistributorTools(unittest.TestCase):
     def test_route_queue_call(self):
         self.tools["distributor_route_queue"](limit=7)
         self.assertEqual(self.client.calls[0],
-                         ("ffl_integrations.distributor.router.route_queue", {"limit": 7}))
+                         ("osa_dropship.web_router.route_queue", {"limit": 7}))
 
     def test_catalog_search_call(self):
         self.tools["distributor_catalog_search"](query="glock", limit=3)
@@ -171,7 +171,7 @@ class DistributorTools(unittest.TestCase):
         self.tools["distributor_fulfillment_options"](woo_online_order="WOO-1")
         self.assertEqual(
             self.client.calls[0],
-            ("ffl_integrations.distributor.options.fulfillment_options_for_order",
+            ("osa_dropship.options.fulfillment_options_for_order",
              {"woo_online_order": "WOO-1"}))
 
     def test_fulfillment_options_lives_in_the_options_module_not_api(self):
@@ -180,7 +180,7 @@ class DistributorTools(unittest.TestCase):
         every other test in this file and only fail against a live POS."""
         self.tools["distributor_fulfillment_options"](woo_online_order="WOO-1")
         method, _ = self.client.calls[0]
-        self.assertTrue(method.startswith("ffl_integrations.distributor.options."))
+        self.assertTrue(method.startswith("osa_dropship.options."))
 
     def test_reads_need_no_confirm(self):
         self.tools["distributor_orders"]()
@@ -230,7 +230,7 @@ class DistributorTools(unittest.TestCase):
     def test_reroute_proceeds_with_confirm(self):
         self.tools["distributor_reroute"](woo_online_order="WOO-1", confirm=True)
         self.assertEqual(self.client.calls[0],
-                         ("ffl_integrations.distributor.router.reroute",
+                         ("osa_dropship.web_router.reroute",
                           {"woo_online_order": "WOO-1"}))
 
     def test_update_order_ffl_refuses_without_confirm(self):
