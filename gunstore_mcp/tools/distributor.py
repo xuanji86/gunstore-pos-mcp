@@ -39,7 +39,10 @@ from ..safety import require_confirm, require_reason
 
 _API = "ffl_integrations.distributor.api."
 _ROUTER = "ffl_integrations.distributor.router."
-_OPTIONS = "ffl_integrations.distributor.options."
+# Web-order routing and the fulfilment options live in the POS drop-ship extension
+# (osa_dropship, POS 1.5+); the rest of the distributor surface is core.
+_WEB_ROUTER = "osa_dropship.web_router."
+_OPTIONS = "osa_dropship.options."
 _HUB = "ffl_integrations.distributor.hub."
 
 ACTIONS_ENV = "GUNSTORE_MCP_DISTRIBUTOR_ACTIONS"
@@ -83,7 +86,7 @@ def register(mcp: Any) -> None:
         operator, plus web orders PARKED before routing (unpaid, missing/expired
         buyer FFL, incomplete address) with the reason and the destination FFL's
         expiry. This is the list to read before confirming anything. Read-only."""
-        return get_client().call_method(_ROUTER + "route_queue", {"limit": limit})
+        return get_client().call_method(_WEB_ROUTER + "route_queue", {"limit": limit})
 
     @mcp.tool()
     def distributor_catalog_search(
@@ -233,7 +236,7 @@ def register(mcp: Any) -> None:
         orders gains no duplicates."""
         require_confirm(f"re-route {woo_online_order}", confirm)
         return get_client().call_method(
-            _ROUTER + "reroute", {"woo_online_order": woo_online_order}
+            _WEB_ROUTER + "reroute", {"woo_online_order": woo_online_order}
         )
 
     @mcp.tool()
